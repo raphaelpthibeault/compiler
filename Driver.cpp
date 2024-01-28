@@ -1,14 +1,14 @@
-//
-// Created by rpthibeault on 28/01/24.
-//
-
-
 #include <iostream>
 #include <util.h>
 #include <lexer.h>
 
 int main(int argc, char **argv) {
-    std::cout << "Hello, World!" << std::endl;
+    // read an input file
+    // tokenize it
+    // print tokens to an output file and print all the invalid tokens to an error file
+
+
+
     return 0;
 }
 

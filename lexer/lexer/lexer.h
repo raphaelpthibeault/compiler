@@ -1,10 +1,9 @@
 #ifndef LEXER_H
 #define LEXER_H
 
-#ifdef _cplusplus
-// will use google test for unit testing so have to use C linkage
+#ifdef __cplusplus
 extern "C" {
-#endif // _cplusplus
+#endif // __cplusplus
 
     #include <stdlib.h>
     #include <string.h>
@@ -71,7 +70,15 @@ extern "C" {
         size_t line;
     } *Token; // Token being a pointer to SToken
 
-    typedef struct SLexer *Lexer; // Lexer being a pointer to SLexer
+    typedef struct SLexer {
+        const char *input;
+        size_t inputLength;
+        size_t position; // line
+        size_t readPosition; // position in input ; should always be 1 ahead of the character we're looking at
+        char character;
+    } *Lexer;
+
+    // Lexer being a pointer to SLexer
     // generally referenced as a double pointer so it becomes NULL after free
     // also to avoid use-after-free errors without having to rely on checking Valgrind.
 
@@ -86,9 +93,9 @@ extern "C" {
     Token *lexerGetAllTokens(Lexer lexer, size_t *length);
     void tokensFreeAll(Token **tokens, size_t *length);
 
-#ifdef _cplusplus
+#ifdef __cplusplus
 };
-#endif // _cplusplus
+#endif // __cplusplus
 
 
 #endif //LEXER_H

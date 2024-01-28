@@ -1,9 +1,9 @@
 #ifndef COMPILER_UTIL_H
 #define COMPILER_UTIL_H
 
-#ifdef _cplusplus
+#ifdef __cplusplus
 extern "C" {
-#endif // _cplusplus
+#endif // __cplusplus
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -23,9 +23,9 @@ size_t Fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 void Fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream);
 
 
-#ifdef _cplusplus
+#ifdef __cplusplus
 };
-#endif // _cplusplus
+#endif // __cplusplus
 
 
 #endif //COMPILER_UTIL_H

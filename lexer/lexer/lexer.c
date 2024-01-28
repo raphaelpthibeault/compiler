@@ -1,14 +1,6 @@
 #include <lexer.h>
 #include <util.h>
 
-struct SLexer {
-    const char *input;
-    size_t inputLength;
-    size_t position; // line
-    size_t readPosition; // position in input ; should always be 1 ahead of the character we're looking at
-    char character;
-};
-
 /* private function declarations */
 static void lexerReadChar_(Lexer lexer);
 static void lexerSkipWhitespace_(Lexer lexer);
@@ -38,7 +30,7 @@ Lexer lexerNew(const char *input) {
 
     lexer->input = input;
     lexer->inputLength = strlen(input);
-    lexer->position = 0;
+    lexer->position = 1;
     lexer->readPosition = 0;
 
     lexerReadChar_(lexer);
@@ -51,7 +43,7 @@ void lexerFree(Lexer *lexer) {
         return;
     }
 
-    free(*lexer);
+    Free(*lexer);
     *lexer = NULL;
 }
 
@@ -79,7 +71,7 @@ void tokensFreeAll(Token **tokens, size_t *length) {
         tokenFree(&(*tokens)[i]);
     }
 
-    free(*tokens);
+    Free(*tokens);
     *tokens = NULL;
     *length = 0;
 }
@@ -136,7 +128,6 @@ Token lexerNextToken(Lexer lexer) {
             break;
         case '&':
             token = tokenNew(TokenTypeAnd, "&", (int)lexer->position);
-
             break;
         case '!':
             token = tokenNew(TokenTypeNot, "!", (int)lexer->position);
@@ -173,9 +164,8 @@ Token lexerNextToken(Lexer lexer) {
             break;
     }
 
-    lexerReadChar_(lexer);
-
     if (token != NULL) {
+        lexerReadChar_(lexer);
         return token;
     }
 
@@ -187,6 +177,11 @@ Token lexerNextToken(Lexer lexer) {
 
     } else if (lexer->character == '_') {
         // invalid identifier, but keep reading until whitespace and give error with full invalid identifier
+        if (!lexerIsAlphaNumeric_(lexer->input[lexer->readPosition])) {
+            lexerReadChar_(lexer);
+            return tokenNew(TokenTypeInvalidId, "_", (int)lexer->position);
+        }
+
         const char *id = lexerReadIdentifier_(lexer);
         return tokenNew(TokenTypeInvalidId, id, (int)lexer->position);
 
@@ -194,7 +189,7 @@ Token lexerNextToken(Lexer lexer) {
         if (lexer->input[lexer->readPosition] != '.') {
             if (lexerIsDigit_(lexer->input[lexer->readPosition])) {
                 char *invalidNumber = lexerReadDigits_(lexer);
-                if (lexer->input[lexer->readPosition] != '.') {
+                if (lexer->character != '.') {
                     return tokenNew(TokenTypeInvalidInt, invalidNumber, (int)lexer->position);
                 }
 
@@ -202,15 +197,19 @@ Token lexerNextToken(Lexer lexer) {
                 strcat(invalidNumber, ".");
                 lexerReadChar_(lexer); // point to the next char
 
-                char *digits = lexerReadDigits_(lexer);
-                invalidNumber = Realloc(invalidNumber, sizeof(char) * (strlen(invalidNumber) + strlen(digits) + 1));
-                strcat(invalidNumber, digits);
-                free(digits);
-
-                if (lexer->input[lexer->readPosition] != 'e') {
+                if (!lexerIsDigit_(lexer->character)) {
                     return tokenNew(TokenTypeInvalidFloat, invalidNumber, (int)lexer->position);
                 }
 
+                char *digits = lexerReadDigits_(lexer);
+                invalidNumber = Realloc(invalidNumber, sizeof(char) * (strlen(invalidNumber) + strlen(digits) + 1));
+                strcat(invalidNumber, digits);
+                Free(digits);
+                digits = NULL;
+
+                if (lexer->character != 'e') {
+                    return tokenNew(TokenTypeInvalidFloat, invalidNumber, (int)lexer->position);
+                }
 
                 invalidNumber = Realloc(invalidNumber, sizeof(char) * (strlen(invalidNumber) + 1));
                 strcat(invalidNumber, "e");
@@ -228,29 +227,25 @@ Token lexerNextToken(Lexer lexer) {
                     return tokenNew(TokenTypeInvalidFloat, invalidNumber, (int)lexer->position);
                 }
 
-                if (lexer->character == '0') {
-                    // read the following digits if any
-                    char *exponent = lexerReadDigits_(lexer);
-                    invalidNumber = Realloc(invalidNumber, sizeof(char) * (strlen(invalidNumber) + strlen(exponent) + 1));
-                    strcat(invalidNumber, exponent);
-                    free(exponent);
-                    return tokenNew(TokenTypeInvalidFloat, invalidNumber, (int)lexer->position);
-                }
-
                 char *exponent = lexerReadDigits_(lexer);
                 invalidNumber = Realloc(invalidNumber, sizeof(char) * (strlen(invalidNumber) + strlen(exponent) + 1));
                 strcat(invalidNumber, exponent);
-                free(exponent);
+                Free(exponent);
+                exponent = NULL;
+
                 return tokenNew(TokenTypeInvalidFloat, invalidNumber, (int)lexer->position);
 
             } else {
+                lexerReadChar_(lexer);
                 return tokenNew(TokenTypeInt, "0", (int)lexer->position);
             }
 
         } else {
-            char *number = Malloc(sizeof(char) * 2);
+            char *number = Malloc(sizeof(char) * 3);
             number[0] = '0';
             number[1] = '.';
+            number[2] = '\0';
+
             lexerReadChar_(lexer); // read the .
             lexerReadChar_(lexer); // point to the next char
 
@@ -262,9 +257,39 @@ Token lexerNextToken(Lexer lexer) {
             char *digits = lexerReadDigits_(lexer);
             number = Realloc(number, sizeof(char) * (strlen(number) + strlen(digits) + 1));
             strcat(number, digits);
-            free(digits);
-            // last digit has to be non-zero
-            if (number[strlen(number) - 1] == '0') {
+            Free(digits);
+            digits = NULL;
+
+            // last digit has to be non-zero except in the case of 0.0
+            if (number[strlen(number) - 1] == '0' && strncmp(number, "0.0", strlen(number)) != 0) {
+                // means something like 0.00 or 0.10
+                if (lexer->character != 'e') {
+                    return tokenNew(TokenTypeInvalidFloat, number, (int)lexer->position);
+                }
+
+                number = Realloc(number, sizeof(char) * (strlen(number) + 1));
+                strcat(number, "e");
+                lexerReadChar_(lexer); // read the e
+
+                if (lexer->character != '+' && lexer->character != '-') {
+                    return tokenNew(TokenTypeInvalidFloat, number, (int)lexer->position);
+                }
+
+                number = Realloc(number, sizeof(char) * (strlen(number) + 1));
+                strcat(number, lexer->character == '+' ? "+" : "-");
+                lexerReadChar_(lexer); // read the sign
+
+                if (!lexerIsDigit_(lexer->character)) {
+                    return tokenNew(TokenTypeInvalidFloat, number, (int)lexer->position);
+                }
+
+                // read all the digits
+                char *exponent = lexerReadDigits_(lexer);
+                number = Realloc(number, sizeof(char) * (strlen(number) + strlen(exponent) + 1));
+                strcat(number, exponent);
+                Free(exponent);
+                exponent = NULL;
+
                 return tokenNew(TokenTypeInvalidFloat, number, (int)lexer->position);
             }
 
@@ -294,16 +319,29 @@ Token lexerNextToken(Lexer lexer) {
 
             if (lexer->character == '0') {
                 char *exponent = lexerReadDigits_(lexer);
+                if (strcmp(exponent, "0") == 0) {
+                    number = Realloc(number, sizeof(char) * (strlen(number) + strlen(exponent) + 1));
+                    strcat(number, exponent);
+                    Free(exponent);
+                    exponent = NULL;
+
+                    return tokenNew(TokenTypeFloat, number, (int)lexer->position);
+                }
+
                 number = Realloc(number, sizeof(char) * (strlen(number) + strlen(exponent) + 1));
                 strcat(number, exponent);
-                free(exponent);
+                Free(exponent);
+                exponent = NULL;
+
                 return tokenNew(TokenTypeInvalidFloat, number, (int)lexer->position);
             }
 
             char *exponent = lexerReadDigits_(lexer);
             number = Realloc(number, sizeof(char) * (strlen(number) + strlen(exponent) + 1));
             strcat(number, exponent);
-            free(exponent);
+            Free(exponent);
+            exponent = NULL;
+
             return tokenNew(TokenTypeFloat, number, (int)lexer->position);
         }
 
@@ -325,10 +363,41 @@ Token lexerNextToken(Lexer lexer) {
         char *fraction = lexerReadDigits_(lexer);
         digits = Realloc(digits, sizeof(char) * (strlen(digits) + strlen(fraction) + 1));
         strcat(digits, fraction);
-        free(fraction);
+        Free(fraction);
+        fraction = NULL;
 
         if (digits[strlen(digits) - 1] == '0') {
-            return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
+            if (digits[strlen(digits) - 2] != '.') {
+                // means something like 1.00
+                if (lexer->character != 'e') {
+                    return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
+                }
+
+                digits = Realloc(digits, sizeof(char) * (strlen(digits) + 1));
+                strcat(digits, "e");
+                lexerReadChar_(lexer); // read the e
+
+                if (lexer->character != '+' && lexer->character != '-') {
+                    return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
+                }
+
+                digits = Realloc(digits, sizeof(char) * (strlen(digits) + 1));
+                strcat(digits, lexer->character == '+' ? "+" : "-");
+                lexerReadChar_(lexer); // read the sign
+
+                if (!lexerIsDigit_(lexer->character)) {
+                    return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
+                }
+
+                // read all the digits
+                char *exponent = lexerReadDigits_(lexer);
+                digits = Realloc(digits, sizeof(char) * (strlen(digits) + strlen(exponent) + 1));
+                strcat(digits, exponent);
+                Free(exponent);
+                exponent = NULL;
+
+                return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
+            }
         }
 
         if (lexer->character != 'e') {
@@ -353,16 +422,28 @@ Token lexerNextToken(Lexer lexer) {
 
         if (lexer->character == '0') {
             char *exponent = lexerReadDigits_(lexer);
+            if (strcmp(exponent, "0") == 0) {
+                digits = Realloc(digits, sizeof(char) * (strlen(digits) + strlen(exponent) + 1));
+                strcat(digits, exponent);
+                Free(exponent);
+                exponent = NULL;
+
+                return tokenNew(TokenTypeFloat, digits, (int)lexer->position);
+            }
             digits = Realloc(digits, sizeof(char) * (strlen(digits) + strlen(exponent) + 1));
             strcat(digits, exponent);
-            free(exponent);
+            Free(exponent);
+            exponent = NULL;
+
             return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
         }
 
         char *exponent = lexerReadDigits_(lexer);
         digits = Realloc(digits, sizeof(char) * (strlen(digits) + strlen(exponent) + 1));
         strcat(digits, exponent);
-        free(exponent);
+        Free(exponent);
+        exponent = NULL;
+
         return tokenNew(TokenTypeFloat, digits, (int)lexer->position);
 
     } else if (lexer->character == '/') {
@@ -373,10 +454,15 @@ Token lexerNextToken(Lexer lexer) {
             char *comment = lexerReadBlockComment_(lexer);
             return tokenNew(TokenTypeBlockComment, comment, (int)lexer->position);
         } else {
+            lexerReadChar_(lexer);
             return tokenNew(TokenTypeDivide, "/", (int)lexer->position);
         }
     } else {
-        // must be an invalid character
+        // must be an invalid character or EOF
+        if (lexer->character == '\0') {
+            return NULL;
+        }
+
         char *invalidChar = Malloc(sizeof(char) * 2);
         invalidChar[0] = lexer->character;
         invalidChar[1] = '\0';
@@ -406,7 +492,7 @@ void tokenFree(Token *token) {
         return;
     }
 
-    free(*token);
+    Free(*token);
     *token = NULL;
 }
 
@@ -437,7 +523,6 @@ static void lexerReadChar_(Lexer lexer) {
         lexer->character = lexer->input[lexer->readPosition];
     }
 
-    lexer->position = lexer->readPosition;
     lexer->readPosition++;
 }
 
@@ -462,6 +547,10 @@ static const char *lexerReadIdentifier_(Lexer lexer) {
         lexerReadChar_(lexer);
     } while (lexerIsAlphaNumeric_(lexer->character));
 
+    // add null terminator to account for a 1 character identifier
+    identifier = Realloc(identifier, sizeof(char) * (i + 1));
+    identifier[i] = '\0';
+
     return identifier;
 }
 
@@ -476,6 +565,10 @@ static TokenType getTokenType_(const char *id, size_t idLength) {
         return TokenTypeThen;
     } else if (strncmp(id, "else", idLength) == 0) {
         return TokenTypeElse;
+    } else if (strncmp(id, "integer", idLength) == 0) {
+        return TokenTypeInt;
+    } else if (strncmp(id, "float", idLength) == 0) {
+        return TokenTypeFloat;
     } else if (strncmp(id, "void", idLength) == 0) {
         return TokenTypeVoid;
     } else if (strncmp(id, "public", idLength) == 0) {
@@ -519,6 +612,10 @@ static char *lexerReadDigits_(Lexer lexer) {
         lexerReadChar_(lexer);
     } while (lexerIsDigit_(lexer->character));
 
+    // add null terminator to account for a 1 character digit
+    digits = Realloc(digits, sizeof(char) * (i + 1));
+    digits[i] = '\0';
+
     return digits;
 }
 
@@ -550,26 +647,57 @@ static char *lexerReadBlockComment_(Lexer lexer) {
         }
 
         comment[i] = lexer->character;
+        if (lexer->character == '\n') {
+            lexer->position++;  // Increment position for each new line
+        }
         i++;
 
         lexerReadChar_(lexer);
 
+        // Check for start of nested block comment
         if (lexer->character == '/' && lexer->input[lexer->readPosition] == '*') {
             commentDepth++;
+            comment = Realloc(comment, sizeof(char) * (i + 1));
+            if (comment == NULL) {
+                return NULL;
+            }
+            comment[i] = lexer->character;
+            if (lexer->character == '\n') {
+                lexer->position++;  // Increment position for each new line
+            }
+            i++;
             lexerReadChar_(lexer);
-        } else if (lexer->character == '*' && lexer->input[lexer->readPosition] == '/') {
+        }
+            // Check for end of the current block comment
+        else if (lexer->character == '*' && lexer->input[lexer->readPosition] == '/') {
             commentDepth--;
+            if (commentDepth > 0) {  // If still inside a nested comment
+                comment = Realloc(comment, sizeof(char) * (i + 1));
+                if (comment == NULL) {
+                    return NULL;
+                }
+                comment[i] = lexer->character;
+                if (lexer->character == '\n') {
+                    lexer->position++;  // Increment position for each new line
+                }
+                i++;
+            }
             lexerReadChar_(lexer);
         }
 
     } while (commentDepth > 0 && lexer->character != '\0');
 
-    comment = Realloc(comment, sizeof(char) * (i + 1));
+    // Append the final "*/" and null terminator
+    comment = Realloc(comment, sizeof(char) * (i + 3));
     if (comment == NULL) {
         return NULL;
     }
 
+    comment[i++] = '*';
+    lexerReadChar_(lexer);
+    comment[i++] = '/';
     comment[i] = '\0';
 
     return comment;
 }
+
