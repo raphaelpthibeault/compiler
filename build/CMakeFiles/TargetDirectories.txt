@@ -1,0 +1,5 @@
+/home/rpthibeault/Documents/compiler/build/CMakeFiles/compiler_lexer_test.dir
+/home/rpthibeault/Documents/compiler/build/CMakeFiles/compiler.dir
+/home/rpthibeault/Documents/compiler/build/CMakeFiles/test.dir
+/home/rpthibeault/Documents/compiler/build/CMakeFiles/edit_cache.dir
+/home/rpthibeault/Documents/compiler/build/CMakeFiles/rebuild_cache.dir
