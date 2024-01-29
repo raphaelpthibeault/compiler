@@ -215,13 +215,11 @@ Token lexerNextToken(Lexer lexer) {
                 strcat(invalidNumber, "e");
                 lexerReadChar_(lexer); // point to the next char
 
-                if (lexer->character != '+' && lexer->character != '-') {
-                    return tokenNew(TokenTypeInvalidFloat, invalidNumber, (int)lexer->position);
+                if (lexer->character == '+' || lexer->character == '-') {
+                    invalidNumber = Realloc(invalidNumber, sizeof(char) * (strlen(invalidNumber) + 1));
+                    strcat(invalidNumber, lexer->character == '+' ? "+" : "-");
+                    lexerReadChar_(lexer); // point to the next char
                 }
-
-                invalidNumber = Realloc(invalidNumber, sizeof(char) * (strlen(invalidNumber) + 1));
-                strcat(invalidNumber, lexer->character == '+' ? "+" : "-");
-                lexerReadChar_(lexer); // point to the next char
 
                 if (!lexerIsDigit_(lexer->character)) {
                     return tokenNew(TokenTypeInvalidFloat, invalidNumber, (int)lexer->position);
@@ -271,13 +269,11 @@ Token lexerNextToken(Lexer lexer) {
                 strcat(number, "e");
                 lexerReadChar_(lexer); // read the e
 
-                if (lexer->character != '+' && lexer->character != '-') {
-                    return tokenNew(TokenTypeInvalidFloat, number, (int)lexer->position);
+                if (lexer->character == '+' || lexer->character == '-') {
+                    number = Realloc(number, sizeof(char) * (strlen(number) + 1));
+                    strcat(number, lexer->character == '+' ? "+" : "-");
+                    lexerReadChar_(lexer); // read the sign
                 }
-
-                number = Realloc(number, sizeof(char) * (strlen(number) + 1));
-                strcat(number, lexer->character == '+' ? "+" : "-");
-                lexerReadChar_(lexer); // read the sign
 
                 if (!lexerIsDigit_(lexer->character)) {
                     return tokenNew(TokenTypeInvalidFloat, number, (int)lexer->position);
@@ -303,14 +299,11 @@ Token lexerNextToken(Lexer lexer) {
             strcat(number, "e");
             lexerReadChar_(lexer); // read the e
 
-            // if the character is not a sign, invalid float
-            if (lexer->character != '+' && lexer->character != '-') {
-                return tokenNew(TokenTypeInvalidFloat, number, (int)lexer->position);
+            if (lexer->character == '+' || lexer->character == '-') {
+                number = Realloc(number, sizeof(char) * (strlen(number) + 1));
+                strcat(number, lexer->character == '+' ? "+" : "-");
+                lexerReadChar_(lexer); // read the sign
             }
-
-            number = Realloc(number, sizeof(char) * (strlen(number) + 1));
-            strcat(number, lexer->character == '+' ? "+" : "-");
-            lexerReadChar_(lexer); // read the sign
 
             // now the next sequence should be an integer
             if (!lexerIsDigit_(lexer->character)) {
@@ -377,13 +370,11 @@ Token lexerNextToken(Lexer lexer) {
                 strcat(digits, "e");
                 lexerReadChar_(lexer); // read the e
 
-                if (lexer->character != '+' && lexer->character != '-') {
-                    return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
+                if (lexer->character == '+' || lexer->character == '-') {
+                    digits = Realloc(digits, sizeof(char) * (strlen(digits) + 1));
+                    strcat(digits, lexer->character == '+' ? "+" : "-");
+                    lexerReadChar_(lexer); // read the sign
                 }
-
-                digits = Realloc(digits, sizeof(char) * (strlen(digits) + 1));
-                strcat(digits, lexer->character == '+' ? "+" : "-");
-                lexerReadChar_(lexer); // read the sign
 
                 if (!lexerIsDigit_(lexer->character)) {
                     return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
@@ -408,13 +399,11 @@ Token lexerNextToken(Lexer lexer) {
         strcat(digits, "e");
         lexerReadChar_(lexer); // read the e
 
-        if (lexer->character != '+' && lexer->character != '-') {
-            return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
+        if (lexer->character == '+' || lexer->character == '-') {
+            digits = Realloc(digits, sizeof(char) * (strlen(digits) + 1));
+            strcat(digits, lexer->character == '+' ? "+" : "-");
+            lexerReadChar_(lexer); // read the sign
         }
-
-        digits = Realloc(digits, sizeof(char) * (strlen(digits) + 1));
-        strcat(digits, lexer->character == '+' ? "+" : "-");
-        lexerReadChar_(lexer); // read the sign
 
         if (!lexerIsDigit_(lexer->character)) {
             return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);

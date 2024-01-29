@@ -40,7 +40,7 @@ void Fclose(FILE *fp) {
 FILE *Fdopen(int fd, const char *type) {
     FILE *fp = fdopen(fd, type);
     if (fp == NULL) {
-        fprintf(stderr, "Error: fdopen failed\n");
+        perror("Error: fdopen failed");
         exit(EXIT_FAILURE);
     }
     return fp;

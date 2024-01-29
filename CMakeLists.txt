@@ -21,9 +21,9 @@ include_directories(lexer/lexer)
 include_directories(util)
 
 add_executable(compiler
-        lexer/lexer/lexer.c
-        lexer/lexer/lexer.h
-        util/util.c
         util/util.h
+        util/util.c
+        lexer/lexer/lexer.h
+        lexer/lexer/lexer.c
         Driver.cpp
 )

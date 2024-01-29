@@ -79,8 +79,6 @@ extern "C" {
     } *Lexer;
 
     // Lexer being a pointer to SLexer
-    // generally referenced as a double pointer so it becomes NULL after free
-    // also to avoid use-after-free errors without having to rely on checking Valgrind.
 
     Lexer lexerNew(const char *input);
     void lexerFree(Lexer *lexer);

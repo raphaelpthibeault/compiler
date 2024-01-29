@@ -496,7 +496,8 @@ TEST(lexerNextToken, floatsNoExponent) {
 TEST(lexerNextToken, floatWithExponent) {
     Lexer lexer = lexerNew(
             "0.0e 0.00e 0.0e+ 0.00e+ 00.0e 00.00e 00.0e+ 00.00e+ 00.00e+1 00.00e+01 0.01e+0 0.01e+01 0.01e+10\n"
-            "1.0e 1.00e 1.0e+ 1.00e+ 10.0e 10.00e 10.0e+ 10.00e+ 10.00e+1 10.00e+10 10.00e+01 01.00e+01 1.01e+0 1.01e+01 1.01e+10"
+            "1.0e 1.00e 1.0e+ 1.00e+ 10.0e 10.00e 10.0e+ 10.00e+ 10.00e+1 10.00e+10 10.00e+01 01.00e+01 1.01e+0 1.01e+01 1.01e+10\n"
+            "120.34e10 12345.6789e-123 0.0e0 0.00e0 1.0e0 1.00e0 0.0e10 0.0e01"
     );
 
     Token token = lexerNextToken(lexer);
@@ -638,6 +639,46 @@ TEST(lexerNextToken, floatWithExponent) {
     ASSERT_EQ(token->type, TokenTypeFloat);
     ASSERT_STREQ(token->value, "1.01e+10");
     ASSERT_EQ(token->line, 2);
+
+    token = lexerNextToken(lexer);
+    ASSERT_EQ(token->type, TokenTypeFloat);
+    ASSERT_STREQ(token->value, "120.34e10");
+    ASSERT_EQ(token->line, 3);
+
+    token = lexerNextToken(lexer);
+    ASSERT_EQ(token->type, TokenTypeFloat);
+    ASSERT_STREQ(token->value, "12345.6789e-123");
+    ASSERT_EQ(token->line, 3);
+
+    token = lexerNextToken(lexer);
+    ASSERT_EQ(token->type, TokenTypeFloat);
+    ASSERT_STREQ(token->value, "0.0e0");
+    ASSERT_EQ(token->line, 3);
+
+    token = lexerNextToken(lexer);
+    ASSERT_EQ(token->type, TokenTypeInvalidFloat);
+    ASSERT_STREQ(token->value, "0.00e0");
+    ASSERT_EQ(token->line, 3);
+
+    token = lexerNextToken(lexer);
+    ASSERT_EQ(token->type, TokenTypeFloat);
+    ASSERT_STREQ(token->value, "1.0e0");
+    ASSERT_EQ(token->line, 3);
+
+    token = lexerNextToken(lexer);
+    ASSERT_EQ(token->type, TokenTypeInvalidFloat);
+    ASSERT_STREQ(token->value, "1.00e0");
+    ASSERT_EQ(token->line, 3);
+
+    token = lexerNextToken(lexer);
+    ASSERT_EQ(token->type, TokenTypeFloat);
+    ASSERT_STREQ(token->value, "0.0e10");
+    ASSERT_EQ(token->line, 3);
+
+    token = lexerNextToken(lexer);
+    ASSERT_EQ(token->type, TokenTypeInvalidFloat);
+    ASSERT_STREQ(token->value, "0.0e01");
+    ASSERT_EQ(token->line, 3);
 
     lexerFree(&lexer);
     tokenFree(&token);
