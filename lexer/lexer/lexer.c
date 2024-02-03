@@ -9,6 +9,9 @@ static const char *lexerReadIdentifier_(Lexer lexer);
 static char *lexerReadDigits_(Lexer lexer);
 static char *lexerReadInlineComment_(Lexer lexer);
 static char *lexerReadBlockComment_(Lexer lexer);
+static Token lexerReadPunctuationAndOperators_(Lexer lexer);
+static Token lexerReadNumberStartingWithZero_(Lexer lexer);
+static Token lexerReadNumberStartingWithNonZero_(Lexer lexer);
 
 static uint8_t lexerIsLetter_(char c);
 static uint8_t lexerIsAlphaNumeric_(char c);
@@ -81,91 +84,8 @@ Token lexerNextToken(Lexer lexer) {
     lexerSkipWhitespace_(lexer);
 
     // start off with the punctuation and operators
-    switch (lexer->character) {
-        case '=':
-            if (lexer->input[lexer->readPosition] == '=') {
-                token = tokenNew(TokenTypeEquals, "==", (int)lexer->position);
-                lexerReadChar_(lexer);
-            } else {
-                token = tokenNew(TokenTypeAssign, "=", (int)lexer->position);
-            }
-            break;
-        case '<':
-            if (lexer->input[lexer->readPosition] == '>') {
-                token = tokenNew(TokenTypeNotEquals, "<>", (int)lexer->position);
-                lexerReadChar_(lexer);
-            } else if (lexer->input[lexer->readPosition] == '=') {
-                token = tokenNew(TokenTypeLessThanOrEquals, "<=", (int)lexer->position);
-                lexerReadChar_(lexer);
-            } else {
-                token = tokenNew(TokenTypeLessThan, "<", (int)lexer->position);
-            }
-            break;
-        case '>':
-            if (lexer->input[lexer->readPosition] == '=') {
-                token = tokenNew(TokenTypeGreaterThanOrEquals, ">=", (int)lexer->position);
-                lexerReadChar_(lexer);
-            } else {
-                token = tokenNew(TokenTypeGreaterThan, ">", (int)lexer->position);
-            }
-            break;
-        case '+':
-            token = tokenNew(TokenTypePlus, "+", (int)lexer->position);
-            break;
-        case '-':
-            if (lexer->input[lexer->readPosition] == '>') {
-                token = tokenNew(TokenTypeArrow, "->", (int)lexer->position);
-                lexerReadChar_(lexer);
-            } else {
-                token = tokenNew(TokenTypeMinus, "-", (int)lexer->position);
-            }
-            break;
-        case '*':
-            token = tokenNew(TokenTypeMultiply, "*", (int)lexer->position);
-            break;
-        case '|':
-            token = tokenNew(TokenTypeOr, "|", (int)lexer->position);
-            break;
-        case '&':
-            token = tokenNew(TokenTypeAnd, "&", (int)lexer->position);
-            break;
-        case '!':
-            token = tokenNew(TokenTypeNot, "!", (int)lexer->position);
-            break;
-        case '(':
-            token = tokenNew(TokenTypeLeftParenthesis, "(", (int)lexer->position);
-            break;
-        case ')':
-            token = tokenNew(TokenTypeRightParenthesis, ")", (int)lexer->position);
-            break;
-        case '{':
-            token = tokenNew(TokenTypeLeftBrace, "{", (int)lexer->position);
-            break;
-        case '}':
-            token = tokenNew(TokenTypeRightBrace, "}", (int)lexer->position);
-            break;
-        case '[':
-            token = tokenNew(TokenTypeLeftBracket, "[", (int)lexer->position);
-            break;
-        case ']':
-            token = tokenNew(TokenTypeRightBracket, "]", (int)lexer->position);
-            break;
-        case ';':
-            token = tokenNew(TokenTypeSemicolon, ";", (int)lexer->position);
-            break;
-        case ',':
-            token = tokenNew(TokenTypeComma, ",", (int)lexer->position);
-            break;
-        case '.':
-            token = tokenNew(TokenTypePeriod, ".", (int)lexer->position);
-            break;
-        case ':':
-            token = tokenNew(TokenTypeColon, ":", (int)lexer->position);
-            break;
-    }
-
+    token = lexerReadPunctuationAndOperators_(lexer);
     if (token != NULL) {
-        lexerReadChar_(lexer);
         return token;
     }
 
@@ -186,261 +106,23 @@ Token lexerNextToken(Lexer lexer) {
         return tokenNew(TokenTypeInvalidId, id, (int)lexer->position);
 
     } else if (lexer->character == '0') {
-        if (lexer->input[lexer->readPosition] != '.') {
-            if (lexerIsDigit_(lexer->input[lexer->readPosition])) {
-                char *invalidNumber = lexerReadDigits_(lexer);
-                if (lexer->character != '.') {
-                    return tokenNew(TokenTypeInvalidInt, invalidNumber, (int)lexer->position);
-                }
-
-                invalidNumber = Realloc(invalidNumber, sizeof(char) * (strlen(invalidNumber) + 1));
-                strcat(invalidNumber, ".");
-                lexerReadChar_(lexer); // point to the next char
-
-                if (!lexerIsDigit_(lexer->character)) {
-                    return tokenNew(TokenTypeInvalidFloat, invalidNumber, (int)lexer->position);
-                }
-
-                char *digits = lexerReadDigits_(lexer);
-                invalidNumber = Realloc(invalidNumber, sizeof(char) * (strlen(invalidNumber) + strlen(digits) + 1));
-                strcat(invalidNumber, digits);
-                Free(digits);
-                digits = NULL;
-
-                if (lexer->character != 'e') {
-                    return tokenNew(TokenTypeInvalidFloat, invalidNumber, (int)lexer->position);
-                }
-
-                invalidNumber = Realloc(invalidNumber, sizeof(char) * (strlen(invalidNumber) + 1));
-                strcat(invalidNumber, "e");
-                lexerReadChar_(lexer); // point to the next char
-
-                if (lexer->character == '+' || lexer->character == '-') {
-                    invalidNumber = Realloc(invalidNumber, sizeof(char) * (strlen(invalidNumber) + 1));
-                    strcat(invalidNumber, lexer->character == '+' ? "+" : "-");
-                    lexerReadChar_(lexer); // point to the next char
-                }
-
-                if (!lexerIsDigit_(lexer->character)) {
-                    return tokenNew(TokenTypeInvalidFloat, invalidNumber, (int)lexer->position);
-                }
-
-                char *exponent = lexerReadDigits_(lexer);
-                invalidNumber = Realloc(invalidNumber, sizeof(char) * (strlen(invalidNumber) + strlen(exponent) + 1));
-                strcat(invalidNumber, exponent);
-                Free(exponent);
-                exponent = NULL;
-
-                return tokenNew(TokenTypeInvalidFloat, invalidNumber, (int)lexer->position);
-
-            } else {
-                lexerReadChar_(lexer);
-                return tokenNew(TokenTypeInt, "0", (int)lexer->position);
-            }
-
-        } else {
-            char *number = Malloc(sizeof(char) * 3);
-            number[0] = '0';
-            number[1] = '.';
-            number[2] = '\0';
-
-            lexerReadChar_(lexer); // read the .
-            lexerReadChar_(lexer); // point to the next char
-
-            // if that character is not a digit, then "0." is invalid float
-            if (!lexerIsDigit_(lexer->character)) {
-                return tokenNew(TokenTypeInvalidFloat, number, (int)lexer->position);
-            }
-
-            char *digits = lexerReadDigits_(lexer);
-            number = Realloc(number, sizeof(char) * (strlen(number) + strlen(digits) + 1));
-            strcat(number, digits);
-            Free(digits);
-            digits = NULL;
-
-            // last digit has to be non-zero except in the case of 0.0
-            if (number[strlen(number) - 1] == '0' && strncmp(number, "0.0", strlen(number)) != 0) {
-                // means something like 0.00 or 0.10
-                if (lexer->character != 'e') {
-                    return tokenNew(TokenTypeInvalidFloat, number, (int)lexer->position);
-                }
-
-                number = Realloc(number, sizeof(char) * (strlen(number) + 1));
-                strcat(number, "e");
-                lexerReadChar_(lexer); // read the e
-
-                if (lexer->character == '+' || lexer->character == '-') {
-                    number = Realloc(number, sizeof(char) * (strlen(number) + 1));
-                    strcat(number, lexer->character == '+' ? "+" : "-");
-                    lexerReadChar_(lexer); // read the sign
-                }
-
-                if (!lexerIsDigit_(lexer->character)) {
-                    return tokenNew(TokenTypeInvalidFloat, number, (int)lexer->position);
-                }
-
-                // read all the digits
-                char *exponent = lexerReadDigits_(lexer);
-                number = Realloc(number, sizeof(char) * (strlen(number) + strlen(exponent) + 1));
-                strcat(number, exponent);
-                Free(exponent);
-                exponent = NULL;
-
-                return tokenNew(TokenTypeInvalidFloat, number, (int)lexer->position);
-            }
-
-            // if the character is not an e, then we're done
-            if (lexer->character != 'e') {
-                return tokenNew(TokenTypeFloat, number, (int)lexer->position);
-            }
-
-            // read exponent
-            number = Realloc(number, sizeof(char) * (strlen(number) + 1));
-            strcat(number, "e");
-            lexerReadChar_(lexer); // read the e
-
-            if (lexer->character == '+' || lexer->character == '-') {
-                number = Realloc(number, sizeof(char) * (strlen(number) + 1));
-                strcat(number, lexer->character == '+' ? "+" : "-");
-                lexerReadChar_(lexer); // read the sign
-            }
-
-            // now the next sequence should be an integer
-            if (!lexerIsDigit_(lexer->character)) {
-                return tokenNew(TokenTypeInvalidFloat, number, (int)lexer->position);
-            }
-
-            if (lexer->character == '0') {
-                char *exponent = lexerReadDigits_(lexer);
-                if (strcmp(exponent, "0") == 0) {
-                    number = Realloc(number, sizeof(char) * (strlen(number) + strlen(exponent) + 1));
-                    strcat(number, exponent);
-                    Free(exponent);
-                    exponent = NULL;
-
-                    return tokenNew(TokenTypeFloat, number, (int)lexer->position);
-                }
-
-                number = Realloc(number, sizeof(char) * (strlen(number) + strlen(exponent) + 1));
-                strcat(number, exponent);
-                Free(exponent);
-                exponent = NULL;
-
-                return tokenNew(TokenTypeInvalidFloat, number, (int)lexer->position);
-            }
-
-            char *exponent = lexerReadDigits_(lexer);
-            number = Realloc(number, sizeof(char) * (strlen(number) + strlen(exponent) + 1));
-            strcat(number, exponent);
-            Free(exponent);
-            exponent = NULL;
-
-            return tokenNew(TokenTypeFloat, number, (int)lexer->position);
-        }
-
+       token = lexerReadNumberStartingWithZero_(lexer);
+       if (token != NULL) {
+           return token;
+       }
 
     } else if (lexerIsNonZeroDigit_(lexer->character)) {
-        char *digits = lexerReadDigits_(lexer);
-        if (lexer->character != '.') {
-            return tokenNew(TokenTypeInt, digits, (int)lexer->position);
+        token = lexerReadNumberStartingWithNonZero_(lexer);
+        if (token != NULL) {
+            return token;
         }
-
-        digits = Realloc(digits, sizeof(char) * (strlen(digits) + 1));
-        strcat(digits, ".");
-        lexerReadChar_(lexer); // point to the next char
-
-        if (!lexerIsDigit_(lexer->character)) {
-            return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
-        }
-
-        char *fraction = lexerReadDigits_(lexer);
-        digits = Realloc(digits, sizeof(char) * (strlen(digits) + strlen(fraction) + 1));
-        strcat(digits, fraction);
-        Free(fraction);
-        fraction = NULL;
-
-        if (digits[strlen(digits) - 1] == '0') {
-            if (digits[strlen(digits) - 2] != '.') {
-                // means something like 1.00
-                if (lexer->character != 'e') {
-                    return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
-                }
-
-                digits = Realloc(digits, sizeof(char) * (strlen(digits) + 1));
-                strcat(digits, "e");
-                lexerReadChar_(lexer); // read the e
-
-                if (lexer->character == '+' || lexer->character == '-') {
-                    digits = Realloc(digits, sizeof(char) * (strlen(digits) + 1));
-                    strcat(digits, lexer->character == '+' ? "+" : "-");
-                    lexerReadChar_(lexer); // read the sign
-                }
-
-                if (!lexerIsDigit_(lexer->character)) {
-                    return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
-                }
-
-                // read all the digits
-                char *exponent = lexerReadDigits_(lexer);
-                digits = Realloc(digits, sizeof(char) * (strlen(digits) + strlen(exponent) + 1));
-                strcat(digits, exponent);
-                Free(exponent);
-                exponent = NULL;
-
-                return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
-            }
-        }
-
-        if (lexer->character != 'e') {
-            return tokenNew(TokenTypeFloat, digits, (int)lexer->position);
-        }
-
-        digits = Realloc(digits, sizeof(char) * (strlen(digits) + 1));
-        strcat(digits, "e");
-        lexerReadChar_(lexer); // read the e
-
-        if (lexer->character == '+' || lexer->character == '-') {
-            digits = Realloc(digits, sizeof(char) * (strlen(digits) + 1));
-            strcat(digits, lexer->character == '+' ? "+" : "-");
-            lexerReadChar_(lexer); // read the sign
-        }
-
-        if (!lexerIsDigit_(lexer->character)) {
-            return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
-        }
-
-        if (lexer->character == '0') {
-            char *exponent = lexerReadDigits_(lexer);
-            if (strcmp(exponent, "0") == 0) {
-                digits = Realloc(digits, sizeof(char) * (strlen(digits) + strlen(exponent) + 1));
-                strcat(digits, exponent);
-                Free(exponent);
-                exponent = NULL;
-
-                return tokenNew(TokenTypeFloat, digits, (int)lexer->position);
-            }
-            digits = Realloc(digits, sizeof(char) * (strlen(digits) + strlen(exponent) + 1));
-            strcat(digits, exponent);
-            Free(exponent);
-            exponent = NULL;
-
-            return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
-        }
-
-        char *exponent = lexerReadDigits_(lexer);
-        digits = Realloc(digits, sizeof(char) * (strlen(digits) + strlen(exponent) + 1));
-        strcat(digits, exponent);
-        Free(exponent);
-        exponent = NULL;
-
-        return tokenNew(TokenTypeFloat, digits, (int)lexer->position);
 
     } else if (lexer->character == '/') {
         if (lexer->input[lexer->readPosition] == '/') {
-            char *comment = lexerReadInlineComment_(lexer);
+            char const *comment = lexerReadInlineComment_(lexer);
             return tokenNew(TokenTypeInlineComment, comment, (int)lexer->position);
         } else if (lexer->input[lexer->readPosition] == '*') {
-            char *comment = lexerReadBlockComment_(lexer);
+            char const *comment = lexerReadBlockComment_(lexer);
             return tokenNew(TokenTypeBlockComment, comment, (int)lexer->position);
         } else {
             lexerReadChar_(lexer);
@@ -459,6 +141,8 @@ Token lexerNextToken(Lexer lexer) {
         return tokenNew(TokenTypeInvalidChar, invalidChar, (int)lexer->position);
     }
 
+    // if we reach here, something has gone horribly wrong
+    return tokenNew(TokenTypeIllegal, NULL, (int)lexer->position);
 }
 
 Token tokenNew(TokenType type, const char *value, const size_t line) {
@@ -689,4 +373,351 @@ static char *lexerReadBlockComment_(Lexer lexer) {
 
     return comment;
 }
+
+static Token lexerReadPunctuationAndOperators_(Lexer lexer) {
+    Token token = NULL;
+    switch (lexer->character) {
+        case '=':
+            if (lexer->input[lexer->readPosition] == '=') {
+                token = tokenNew(TokenTypeEquals, "==", (int)lexer->position);
+                lexerReadChar_(lexer);
+            } else {
+                token = tokenNew(TokenTypeAssign, "=", (int)lexer->position);
+            }
+            break;
+        case '<':
+            if (lexer->input[lexer->readPosition] == '>') {
+                token = tokenNew(TokenTypeNotEquals, "<>", (int)lexer->position);
+                lexerReadChar_(lexer);
+            } else if (lexer->input[lexer->readPosition] == '=') {
+                token = tokenNew(TokenTypeLessThanOrEquals, "<=", (int)lexer->position);
+                lexerReadChar_(lexer);
+            } else {
+                token = tokenNew(TokenTypeLessThan, "<", (int)lexer->position);
+            }
+            break;
+        case '>':
+            if (lexer->input[lexer->readPosition] == '=') {
+                token = tokenNew(TokenTypeGreaterThanOrEquals, ">=", (int)lexer->position);
+                lexerReadChar_(lexer);
+            } else {
+                token = tokenNew(TokenTypeGreaterThan, ">", (int)lexer->position);
+            }
+            break;
+        case '+':
+            token = tokenNew(TokenTypePlus, "+", (int)lexer->position);
+            break;
+        case '-':
+            if (lexer->input[lexer->readPosition] == '>') {
+                token = tokenNew(TokenTypeArrow, "->", (int)lexer->position);
+                lexerReadChar_(lexer);
+            } else {
+                token = tokenNew(TokenTypeMinus, "-", (int)lexer->position);
+            }
+            break;
+        case '*':
+            token = tokenNew(TokenTypeMultiply, "*", (int)lexer->position);
+            break;
+        case '|':
+            token = tokenNew(TokenTypeOr, "|", (int)lexer->position);
+            break;
+        case '&':
+            token = tokenNew(TokenTypeAnd, "&", (int)lexer->position);
+            break;
+        case '!':
+            token = tokenNew(TokenTypeNot, "!", (int)lexer->position);
+            break;
+        case '(':
+            token = tokenNew(TokenTypeLeftParenthesis, "(", (int)lexer->position);
+            break;
+        case ')':
+            token = tokenNew(TokenTypeRightParenthesis, ")", (int)lexer->position);
+            break;
+        case '{':
+            token = tokenNew(TokenTypeLeftBrace, "{", (int)lexer->position);
+            break;
+        case '}':
+            token = tokenNew(TokenTypeRightBrace, "}", (int)lexer->position);
+            break;
+        case '[':
+            token = tokenNew(TokenTypeLeftBracket, "[", (int)lexer->position);
+            break;
+        case ']':
+            token = tokenNew(TokenTypeRightBracket, "]", (int)lexer->position);
+            break;
+        case ';':
+            token = tokenNew(TokenTypeSemicolon, ";", (int)lexer->position);
+            break;
+        case ',':
+            token = tokenNew(TokenTypeComma, ",", (int)lexer->position);
+            break;
+        case '.':
+            token = tokenNew(TokenTypePeriod, ".", (int)lexer->position);
+            break;
+        case ':':
+            token = tokenNew(TokenTypeColon, ":", (int)lexer->position);
+            break;
+        default:
+            break;
+    }
+
+    if (token != NULL) {
+        lexerReadChar_(lexer);
+        return token;
+    }
+
+    return NULL;
+}
+
+static Token lexerReadNumberStartingWithZero_(Lexer lexer) {
+    if (lexer->input[lexer->readPosition] != '.') {
+        if (lexerIsDigit_(lexer->input[lexer->readPosition])) {
+            char *invalidNumber = lexerReadDigits_(lexer);
+            if (lexer->character != '.') {
+                return tokenNew(TokenTypeInvalidInt, invalidNumber, (int)lexer->position);
+            }
+
+            invalidNumber = Realloc(invalidNumber, sizeof(char) * (strlen(invalidNumber) + 1));
+            strcat(invalidNumber, ".");
+            lexerReadChar_(lexer); // point to the next char
+
+            if (!lexerIsDigit_(lexer->character)) {
+                return tokenNew(TokenTypeInvalidFloat, invalidNumber, (int)lexer->position);
+            }
+
+            char *digits = lexerReadDigits_(lexer);
+            invalidNumber = Realloc(invalidNumber, sizeof(char) * (strlen(invalidNumber) + strlen(digits) + 1));
+            strcat(invalidNumber, digits);
+            Free(digits);
+            digits = NULL;
+
+            if (lexer->character != 'e') {
+                return tokenNew(TokenTypeInvalidFloat, invalidNumber, (int)lexer->position);
+            }
+
+            invalidNumber = Realloc(invalidNumber, sizeof(char) * (strlen(invalidNumber) + 1));
+            strcat(invalidNumber, "e");
+            lexerReadChar_(lexer); // point to the next char
+
+            if (lexer->character == '+' || lexer->character == '-') {
+                invalidNumber = Realloc(invalidNumber, sizeof(char) * (strlen(invalidNumber) + 1));
+                strcat(invalidNumber, lexer->character == '+' ? "+" : "-");
+                lexerReadChar_(lexer); // point to the next char
+            }
+
+            if (!lexerIsDigit_(lexer->character)) {
+                return tokenNew(TokenTypeInvalidFloat, invalidNumber, (int)lexer->position);
+            }
+
+            char *exponent = lexerReadDigits_(lexer);
+            invalidNumber = Realloc(invalidNumber, sizeof(char) * (strlen(invalidNumber) + strlen(exponent) + 1));
+            strcat(invalidNumber, exponent);
+            Free(exponent);
+            exponent = NULL;
+
+            return tokenNew(TokenTypeInvalidFloat, invalidNumber, (int)lexer->position);
+
+        } else {
+            lexerReadChar_(lexer);
+            return tokenNew(TokenTypeInt, "0", (int)lexer->position);
+        }
+
+    } else {
+        char *number = Malloc(sizeof(char) * 3);
+        number[0] = '0';
+        number[1] = '.';
+        number[2] = '\0';
+
+        lexerReadChar_(lexer); // read the .
+        lexerReadChar_(lexer); // point to the next char
+
+        // if that character is not a digit, then "0." is invalid float
+        if (!lexerIsDigit_(lexer->character)) {
+            return tokenNew(TokenTypeInvalidFloat, number, (int)lexer->position);
+        }
+
+        char *digits = lexerReadDigits_(lexer);
+        number = Realloc(number, sizeof(char) * (strlen(number) + strlen(digits) + 1));
+        strcat(number, digits);
+        Free(digits);
+        digits = NULL;
+
+        // last digit has to be non-zero except in the case of 0.0
+        if (number[strlen(number) - 1] == '0' && strncmp(number, "0.0", strlen(number)) != 0) {
+            // means something like 0.00 or 0.10
+            if (lexer->character != 'e') {
+                return tokenNew(TokenTypeInvalidFloat, number, (int)lexer->position);
+            }
+
+            number = Realloc(number, sizeof(char) * (strlen(number) + 1));
+            strcat(number, "e");
+            lexerReadChar_(lexer); // read the e
+
+            if (lexer->character == '+' || lexer->character == '-') {
+                number = Realloc(number, sizeof(char) * (strlen(number) + 1));
+                strcat(number, lexer->character == '+' ? "+" : "-");
+                lexerReadChar_(lexer); // read the sign
+            }
+
+            if (!lexerIsDigit_(lexer->character)) {
+                return tokenNew(TokenTypeInvalidFloat, number, (int)lexer->position);
+            }
+
+            // read all the digits
+            char *exponent = lexerReadDigits_(lexer);
+            number = Realloc(number, sizeof(char) * (strlen(number) + strlen(exponent) + 1));
+            strcat(number, exponent);
+            Free(exponent);
+            exponent = NULL;
+
+            return tokenNew(TokenTypeInvalidFloat, number, (int)lexer->position);
+        }
+
+        // if the character is not an e, then we're done
+        if (lexer->character != 'e') {
+            return tokenNew(TokenTypeFloat, number, (int)lexer->position);
+        }
+
+        // read exponent
+        number = Realloc(number, sizeof(char) * (strlen(number) + 1));
+        strcat(number, "e");
+        lexerReadChar_(lexer); // read the e
+
+        if (lexer->character == '+' || lexer->character == '-') {
+            number = Realloc(number, sizeof(char) * (strlen(number) + 1));
+            strcat(number, lexer->character == '+' ? "+" : "-");
+            lexerReadChar_(lexer); // read the sign
+        }
+
+        // now the next sequence should be an integer
+        if (!lexerIsDigit_(lexer->character)) {
+            return tokenNew(TokenTypeInvalidFloat, number, (int)lexer->position);
+        }
+
+        if (lexer->character == '0') {
+            char *exponent = lexerReadDigits_(lexer);
+            if (strcmp(exponent, "0") == 0) {
+                number = Realloc(number, sizeof(char) * (strlen(number) + strlen(exponent) + 1));
+                strcat(number, exponent);
+                Free(exponent);
+                exponent = NULL;
+
+                return tokenNew(TokenTypeFloat, number, (int)lexer->position);
+            }
+
+            number = Realloc(number, sizeof(char) * (strlen(number) + strlen(exponent) + 1));
+            strcat(number, exponent);
+            Free(exponent);
+            exponent = NULL;
+
+            return tokenNew(TokenTypeInvalidFloat, number, (int)lexer->position);
+        }
+
+        char *exponent = lexerReadDigits_(lexer);
+        number = Realloc(number, sizeof(char) * (strlen(number) + strlen(exponent) + 1));
+        strcat(number, exponent);
+        Free(exponent);
+        exponent = NULL;
+
+        return tokenNew(TokenTypeFloat, number, (int)lexer->position);
+    }
+}
+
+static Token lexerReadNumberStartingWithNonZero_(Lexer lexer) {
+    char *digits = lexerReadDigits_(lexer);
+    if (lexer->character != '.') {
+        return tokenNew(TokenTypeInt, digits, (int)lexer->position);
+    }
+
+    digits = Realloc(digits, sizeof(char) * (strlen(digits) + 1));
+    strcat(digits, ".");
+    lexerReadChar_(lexer); // point to the next char
+
+    if (!lexerIsDigit_(lexer->character)) {
+        return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
+    }
+
+    char *fraction = lexerReadDigits_(lexer);
+    digits = Realloc(digits, sizeof(char) * (strlen(digits) + strlen(fraction) + 1));
+    strcat(digits, fraction);
+    Free(fraction);
+    fraction = NULL;
+
+    if (digits[strlen(digits) - 1] == '0') {
+        if (digits[strlen(digits) - 2] != '.') {
+            // means something like 1.00
+            if (lexer->character != 'e') {
+                return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
+            }
+
+            digits = Realloc(digits, sizeof(char) * (strlen(digits) + 1));
+            strcat(digits, "e");
+            lexerReadChar_(lexer); // read the e
+
+            if (lexer->character == '+' || lexer->character == '-') {
+                digits = Realloc(digits, sizeof(char) * (strlen(digits) + 1));
+                strcat(digits, lexer->character == '+' ? "+" : "-");
+                lexerReadChar_(lexer); // read the sign
+            }
+
+            if (!lexerIsDigit_(lexer->character)) {
+                return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
+            }
+
+            // read all the digits
+            char *exponent = lexerReadDigits_(lexer);
+            digits = Realloc(digits, sizeof(char) * (strlen(digits) + strlen(exponent) + 1));
+            strcat(digits, exponent);
+            Free(exponent);
+            exponent = NULL;
+
+            return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
+        }
+    }
+
+    if (lexer->character != 'e') {
+        return tokenNew(TokenTypeFloat, digits, (int)lexer->position);
+    }
+
+    digits = Realloc(digits, sizeof(char) * (strlen(digits) + 1));
+    strcat(digits, "e");
+    lexerReadChar_(lexer); // read the e
+
+    if (lexer->character == '+' || lexer->character == '-') {
+        digits = Realloc(digits, sizeof(char) * (strlen(digits) + 1));
+        strcat(digits, lexer->character == '+' ? "+" : "-");
+        lexerReadChar_(lexer); // read the sign
+    }
+
+    if (!lexerIsDigit_(lexer->character)) {
+        return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
+    }
+
+    if (lexer->character == '0') {
+        char *exponent = lexerReadDigits_(lexer);
+        if (strcmp(exponent, "0") == 0) {
+            digits = Realloc(digits, sizeof(char) * (strlen(digits) + strlen(exponent) + 1));
+            strcat(digits, exponent);
+            Free(exponent);
+            exponent = NULL;
+
+            return tokenNew(TokenTypeFloat, digits, (int)lexer->position);
+        }
+        digits = Realloc(digits, sizeof(char) * (strlen(digits) + strlen(exponent) + 1));
+        strcat(digits, exponent);
+        Free(exponent);
+        exponent = NULL;
+
+        return tokenNew(TokenTypeInvalidFloat, digits, (int)lexer->position);
+    }
+
+    char *exponent = lexerReadDigits_(lexer);
+    digits = Realloc(digits, sizeof(char) * (strlen(digits) + strlen(exponent) + 1));
+    strcat(digits, exponent);
+    Free(exponent);
+    exponent = NULL;
+
+    return tokenNew(TokenTypeFloat, digits, (int)lexer->position);
+}
+
 
