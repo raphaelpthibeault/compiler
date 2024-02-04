@@ -1,9 +1,0 @@
-# ninja log v5
-45	138	1706836218464045174	compiler_lexer_test	b3d7329939c93741
-1	187	1706830375786664346	CMakeFiles/compiler.dir/Driver.cpp.o	a65850fe5403e4d2
-0	24	1706489645721569468	CMakeFiles/compiler_lexer_test.dir/util/util.c.o	2c2dd847d8097b7f
-0	48	1706830375650669086	CMakeFiles/compiler.dir/lexer/lexer/lexer.c.o	2757b8cfdee58481
-187	227	1706830375826662953	compiler	75b955031c2645c0
-1	27	1706488652122458430	CMakeFiles/compiler.dir/util/util.c.o	c3d4a09db5b1243c
-1	854	1706496230700889694	CMakeFiles/compiler_lexer_test.dir/lexer/tests/lexer_test.cpp.o	381005dc5bff0fde
-1	45	1706836218368044951	CMakeFiles/compiler_lexer_test.dir/lexer/lexer/lexer.c.o	ed6d4f7b055d7a4d
