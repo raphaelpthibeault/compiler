@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/compiler.dir/util/util.c.o CMakeFiles/compiler.dir/lexer/lexer/lexer.c.o CMakeFiles/compiler.dir/Driver.cpp.o -o compiler 
