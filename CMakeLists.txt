@@ -26,4 +26,6 @@ add_executable(compiler
         lexer/lexer/lexer.h
         lexer/lexer/lexer.c
         Driver.cpp
+        parser/parser/Parser.cpp
+        parser/parser/Parser.hpp
 )

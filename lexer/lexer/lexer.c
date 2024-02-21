@@ -19,7 +19,7 @@ static uint8_t lexerIsAlphaNumeric_(char c);
 static uint8_t lexerIsNonZeroDigit_(char c);
 static uint8_t lexerIsDigit_(char c);
 
-static TokenType getTokenType_(const char *id, size_t idLength);
+static TokenType getTokenType_(const char *id);
 
 
 /**********************************************************************************************************************
@@ -79,6 +79,23 @@ void tokensFreeAll(Token **tokens, size_t *length) {
     *length = 0;
 }
 
+Token getNextToken(Lexer lexer) {
+    // skip comment tokens
+    Token token = lexerNextToken(lexer);
+    while (token != NULL && (token->type == TokenTypeInlineComment || token->type == TokenTypeBlockComment)) {
+        tokenFree(&token);
+        token = lexerNextToken(lexer);
+    }
+
+    if (token == NULL) {
+        return tokenNew(TokenTypeEOF, "EOF", (int)lexer->position);
+    }
+
+    return token;
+
+}
+
+
 Token lexerNextToken(Lexer lexer) {
     Token token = NULL;
     lexerSkipWhitespace_(lexer);
@@ -92,7 +109,7 @@ Token lexerNextToken(Lexer lexer) {
     // reading identifiers and keywords
     if (lexerIsLetter_(lexer->character)) {
         const char *id = lexerReadIdentifier_(lexer);
-        TokenType type = getTokenType_(id, strlen(id));
+        TokenType type = getTokenType_(id);
         return tokenNew(type, id, (int)lexer->position);
 
     } else if (lexer->character == '_') {
@@ -227,48 +244,45 @@ static const char *lexerReadIdentifier_(Lexer lexer) {
     return identifier;
 }
 
-static TokenType getTokenType_(const char *id, size_t idLength) {
-    if (idLength == 0) {
-        return TokenTypeIllegal; // for testing purposes, should never happen
-    }
+static TokenType getTokenType_(const char *id) {
     // compare to all reserved words
-    if (strncmp(id, "if", idLength) == 0) {
+    if (strncmp(id, "if", 2) == 0) {
         return TokenTypeIf;
-    } else if (strncmp(id, "then", idLength) == 0) {
+    } else if (strncmp(id, "then", 4) == 0) {
         return TokenTypeThen;
-    } else if (strncmp(id, "else", idLength) == 0) {
+    } else if (strncmp(id, "else", 4) == 0) {
         return TokenTypeElse;
-    } else if (strncmp(id, "integer", idLength) == 0) {
-        return TokenTypeInt;
-    } else if (strncmp(id, "float", idLength) == 0) {
-        return TokenTypeFloat;
-    } else if (strncmp(id, "void", idLength) == 0) {
+    } else if (strncmp(id, "integer", 7) == 0) {
+        return TokenTypeIntType;
+    } else if (strncmp(id, "float", 5) == 0) {
+        return TokenTypeFloatType;
+    } else if (strncmp(id, "void", 4) == 0) {
         return TokenTypeVoid;
-    } else if (strncmp(id, "public", idLength) == 0) {
+    } else if (strncmp(id, "public", 6) == 0) {
         return TokenTypePublic;
-    } else if (strncmp(id, "private", idLength) == 0) {
+    } else if (strncmp(id, "private", 7) == 0) {
         return TokenTypePrivate;
-    } else if (strncmp(id, "func", idLength) == 0) {
+    } else if (strncmp(id, "func", 4) == 0) {
         return TokenTypeFunc;
-    } else if (strncmp(id, "var", idLength) == 0) {
+    } else if (strncmp(id, "var", 3) == 0) {
         return TokenTypeVar;
-    } else if (strncmp(id, "struct", idLength) == 0) {
+    } else if (strncmp(id, "struct", 6) == 0) {
         return TokenTypeStruct;
-    } else if (strncmp(id, "while", idLength) == 0) {
+    } else if (strncmp(id, "while", 5) == 0) {
         return TokenTypeWhile;
-    } else if (strncmp(id, "read", idLength) == 0) {
+    } else if (strncmp(id, "read", 4) == 0) {
         return TokenTypeRead;
-    } else if (strncmp(id, "write", idLength) == 0) {
+    } else if (strncmp(id, "write", 5) == 0) {
         return TokenTypeWrite;
-    } else if (strncmp(id, "return", idLength) == 0) {
+    } else if (strncmp(id, "return", 6) == 0) {
         return TokenTypeReturn;
-    } else if (strncmp(id, "self", idLength) == 0) {
+    } else if (strncmp(id, "self", 4) == 0) {
         return TokenTypeSelf;
-    } else if (strncmp(id, "inherits", idLength) == 0) {
+    } else if (strncmp(id, "inherits", 8) == 0) {
         return TokenTypeInherits;
-    } else if (strncmp(id, "let", idLength) == 0) {
+    } else if (strncmp(id, "let", 3) == 0) {
         return TokenTypeLet;
-    } else if (strncmp(id, "impl", idLength) == 0) {
+    } else if (strncmp(id, "impl", 4) == 0) {
         return TokenTypeImplements;
     } else {
         return TokenTypeId;

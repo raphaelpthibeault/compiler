@@ -62,6 +62,10 @@ extern "C" {
         TokenTypeInvalidChar,
         TokenTypeInlineComment,
         TokenTypeBlockComment,
+        TokenTypeDollarSign,
+        TokenTypeIntType,
+        TokenTypeFloatType,
+        TokenTypeEOF,
     } TokenType;
 
     typedef struct SToken {
@@ -90,6 +94,8 @@ extern "C" {
     // get all tokens from lexer
     Token *lexerGetAllTokens(Lexer lexer, size_t *length);
     void tokensFreeAll(Token **tokens, size_t *length);
+
+    Token getNextToken(Lexer lexer);
 
 #ifdef __cplusplus
 };

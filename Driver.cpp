@@ -108,6 +108,7 @@ static const char *tokenTypeToString_(TokenType type) {
     }
 }
 
+/*
 int main(int argc, char **argv) {
     if (argc < 2) {
         fprintf(stderr, "Error: no input file given\n");
@@ -181,4 +182,4 @@ int main(int argc, char **argv) {
 
     return 0;
 }
-
+*/
