@@ -231,7 +231,7 @@ int main() {
     std::cout << "Parsing CSV into table" << std::endl;
     parseCSVIntoTT(csvFilePath, TT);
 
-    std::string baseName = "statement_pos";
+    std::string baseName = "neg";
     std::ifstream file(baseName + ".src");
     std::ofstream outfile(baseName + ".outderivation");
     std::ofstream errorfile(baseName + ".outsyntaxerrors");
@@ -383,6 +383,11 @@ void skipError(Lexer& lexer, std::stack<std::string>& parseStack, Token& lookahe
     } else {
         while (FirstSets[x].find(tokenTypeToString(lookahead->type)) == FirstSets[x].end()
                 && FollowSets[x].find(tokenTypeToString(lookahead->type)) == FollowSets[x].end()) {
+            if (x == "semi" || x == "$" || lookahead->type == TokenTypeEOF) {
+                parseStack.pop();
+                return;
+            }
+
             lookahead = getNextToken(lexer);
         }
     }
