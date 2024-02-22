@@ -82,7 +82,7 @@ void tokensFreeAll(Token **tokens, size_t *length) {
 Token getNextToken(Lexer lexer) {
     // skip comment tokens
     Token token = lexerNextToken(lexer);
-    while (token != NULL && (token->type == TokenTypeInlineComment || token->type == TokenTypeBlockComment)) {
+    while (token != NULL && (token->type == TokenTypeInlineComment || token->type == TokenTypeBlockComment || token->type == TokenTypeInvalidChar || token->type == TokenTypeInvalidId || token->type == TokenTypeInvalidInt || token->type == TokenTypeInvalidFloat || token->type == TokenTypeIllegal)) {
         tokenFree(&token);
         token = lexerNextToken(lexer);
     }
