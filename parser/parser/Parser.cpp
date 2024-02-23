@@ -231,7 +231,7 @@ int main() {
     std::cout << "Parsing CSV into table" << std::endl;
     parseCSVIntoTT(csvFilePath, TT);
 
-    std::string baseName = "neg";
+    std::string baseName = "bubblesort";
     std::ifstream file(baseName + ".src");
     std::ofstream outfile(baseName + ".outderivation");
     std::ofstream errorfile(baseName + ".outsyntaxerrors");
@@ -240,7 +240,7 @@ int main() {
     std::string input((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     Lexer lexer = lexerNew(input.c_str());
 
-    std::cout << "Parsing the .src file " << std::endl;
+    std::cout << "Parsing " << baseName << ".src " << std::endl;
     bool parse_accepted = parse2(lexer, TT, outfile, errorfile);
     outfile << "\nPARSE " << (parse_accepted ? "ACCEPTED" : "REJECTED") << std::endl;
 
@@ -273,6 +273,9 @@ bool parse2(Lexer lexer, std::map<TableKey, ProductionRule>& TT, std::ofstream& 
                 accepted = false;
             }
         } else {
+            if (a->type == TokenTypeEOF) {
+                return false;
+            }
 
             TableKey key = {x, tokenTypeToString(a->type)};
 
