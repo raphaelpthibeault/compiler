@@ -1,42 +1,15 @@
-#include <iostream>
 #include <stack>
-#include <vector>
-#include <fstream>
-#include <sstream>
 #include <string>
-#include <map>
-#include <unordered_map>
-#include <unordered_set>
-#include "Parser.hpp"
+#include <parser.hpp>
 
-
-
-using ProductionRule = std::vector<std::string>;
-using TableKey = std::pair<std::string, std::string>;
-using Set = std::unordered_set<std::string>;
 
 void skipError(Lexer& lexer, std::stack<std::string>& parseStack, Token& lookahead);
 void inverseRHSMultiplePush(std::stack<std::string>& parseStack, const std::vector<std::string>& rule);
 bool isTerminal(const std::string& symbol);
 std::string tokenTypeToString(TokenType type);
+void printStack(const std::stack<std::string>& stack, std::ofstream& outfile);
 
-bool parse2(Lexer lexer, std::map<TableKey, ProductionRule>& TT, std::ofstream& outfile, std::ofstream& errorfile);
-
-
-void printStack(const std::stack<std::string>& stack, std::ofstream& outfile) {
-    std::stack<std::string> tempStack = stack; // Copy because original stack is LIFO
-    std::vector<std::string> elements;
-    while (!tempStack.empty()) {
-        elements.push_back(tempStack.top());
-        tempStack.pop();
-    }
-    for (auto it = elements.rbegin(); it != elements.rend(); ++it) {
-        outfile << *it << " ";
-    }
-    outfile << std::endl;
-}
-
-
+// hard-coded first and follow sets for use in error handling and recovery
 std::unordered_map<std::string, std::unordered_set<std::string>> FirstSets = {
         {"ADDOP", {"plus", "minus", "or"}},
         {"ARRAYSIZE2", {"intlit", "rsqbr"}},
@@ -177,13 +150,13 @@ void parseCSVIntoTT(const std::string& filePath, std::map<TableKey, ProductionRu
     std::string line;
     std::vector<std::string> terminals;
 
-    // Read the first line to get terminals
+    // first line is terminals
     if (std::getline(file, line)) {
         std::istringstream ss(line);
         std::string terminal;
-        std::getline(ss, terminal, ','); // Skip the first empty cell
+        std::getline(ss, terminal, ',');
         while (std::getline(ss, terminal, ',')) {
-            terminals.push_back(terminal); // Store terminals
+            terminals.push_back(terminal);
         }
     }
 
@@ -191,15 +164,14 @@ void parseCSVIntoTT(const std::string& filePath, std::map<TableKey, ProductionRu
     while (std::getline(file, line)) {
         std::istringstream ss(line);
         std::string nonTerminal, cell;
-        std::getline(ss, nonTerminal, ','); // Get the non-terminal
+        std::getline(ss, nonTerminal, ',');
 
         int terminalIndex = 0;
         while (std::getline(ss, cell, ',')) {
-            if (!cell.empty() && cell != " " && cell != "\xC2\xA0") { // Check for non-empty rule, handling non-breaking space
+            if (!cell.empty() && cell != " " && cell != "\xC2\xA0") {
                 TableKey key = {nonTerminal, terminals[terminalIndex]};
                 ProductionRule production;
 
-                // Split cell into rule symbols
                 std::string symbol;
                 std::istringstream cellStream(cell);
                 while (cellStream >> symbol) {
@@ -217,39 +189,17 @@ void parseCSVIntoTT(const std::string& filePath, std::map<TableKey, ProductionRu
     // add EOF to REPTPROG0
     TableKey key = {"REPTPROG0", "EOF"};
     ProductionRule production;
-    // epsilon
-    production.push_back("REBTPROG0");
-    production.push_back("\xC2\xA0");
-    production.push_back("EOF");
+    production.emplace_back("REBTPROG0");
+    production.emplace_back("\xC2\xA0");
+    production.emplace_back("EOF");
     TT[key] = production;
 }
 
 
-int main() {
-    std::map<TableKey, ProductionRule> TT;
-    const std::string csvFilePath = "GRAMMAR_TABLE.csv";
-    std::cout << "Parsing CSV into table" << std::endl;
-    parseCSVIntoTT(csvFilePath, TT);
-
-    std::string baseName = "bubblesort";
-    std::ifstream file(baseName + ".src");
-    std::ofstream outfile(baseName + ".outderivation");
-    std::ofstream errorfile(baseName + ".outsyntaxerrors");
 
 
-    std::string input((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    Lexer lexer = lexerNew(input.c_str());
 
-    std::cout << "Parsing " << baseName << ".src " << std::endl;
-    bool parse_accepted = parse2(lexer, TT, outfile, errorfile);
-    outfile << "\nPARSE " << (parse_accepted ? "ACCEPTED" : "REJECTED") << std::endl;
-
-    std::cout << "Done" << std::endl;
-    return 0;
-}
-
-
-bool parse2(Lexer lexer, std::map<TableKey, ProductionRule>& TT, std::ofstream& outfile, std::ofstream& errorfile) {
+bool parse(Lexer lexer, std::map<TableKey, ProductionRule>& TT, std::ofstream& outfile, std::ofstream& errorfile) {
     bool accepted = true;
     std::stack<std::string> parseStack;
 
@@ -291,19 +241,11 @@ bool parse2(Lexer lexer, std::map<TableKey, ProductionRule>& TT, std::ofstream& 
             }
 
         }
-
-
-
     }
-
 
     printStack(parseStack, outfile);
     return accepted;
-
 }
-
-
-
 
 
 void inverseRHSMultiplePush(std::stack<std::string>& parseStack, const std::vector<std::string>& rule) {
@@ -379,7 +321,6 @@ std::string tokenTypeToString(TokenType type) {
 }
 
 void skipError(Lexer& lexer, std::stack<std::string>& parseStack, Token& lookahead) {
-
     std::string x = parseStack.top();
     if (FollowSets[x].find(tokenTypeToString(lookahead->type)) != FollowSets[x].end()) {
         parseStack.pop();
@@ -400,3 +341,15 @@ bool isTerminal(const std::string& symbol) {
     return symbol == "&epsilon" || symbol == "id" || symbol == "intlit" || symbol == "floatlit" || symbol == "integer" || symbol == "float" || symbol == "eq" || symbol == "neq" || symbol == "lt" || symbol == "gt" || symbol == "leq" || symbol == "geq" || symbol == "plus" || symbol == "minus" || symbol == "mult" || symbol == "div" || symbol == "equal" || symbol == "or" || symbol == "and" || symbol == "not" || symbol == "lpar" || symbol == "rpar" || symbol == "lcurbr" || symbol == "rcurbr" || symbol == "lsqbr" || symbol == "rsqbr" || symbol == "semi" || symbol == "comma" || symbol == "dot" || symbol == "colon" || symbol == "arrow" || symbol == "if" || symbol == "then" || symbol == "else" || symbol == "void" || symbol == "public" || symbol == "private" || symbol == "func" || symbol == "var" || symbol == "struct" || symbol == "while" || symbol == "read" || symbol == "write" || symbol == "return" || symbol == "self" || symbol == "inherits" || symbol == "let" || symbol == "impl";
 }
 
+void printStack(const std::stack<std::string>& stack, std::ofstream& outfile) {
+    std::stack<std::string> tempStack = stack; // Copy because original stack is LIFO
+    std::vector<std::string> elements;
+    while (!tempStack.empty()) {
+        elements.push_back(tempStack.top());
+        tempStack.pop();
+    }
+    for (auto it = elements.rbegin(); it != elements.rend(); ++it) {
+        outfile << *it << " ";
+    }
+    outfile << std::endl;
+}

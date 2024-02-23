@@ -17,8 +17,11 @@ add_executable(compiler_lexer_test
 target_include_directories(compiler_lexer_test PRIVATE ${GTEST_INCLUDE_DIRS})
 target_link_libraries(compiler_lexer_test ${GTEST_LIBRARIES} ${GTEST_MAIN_LIBRARIES})
 
-include_directories(lexer/lexer)
-include_directories(util)
+include_directories(
+        util
+        lexer/lexer
+        parser/parser
+)
 
 add_executable(compiler
         util/util.h
@@ -26,6 +29,6 @@ add_executable(compiler
         lexer/lexer/lexer.h
         lexer/lexer/lexer.c
         Driver.cpp
-        parser/parser/Parser.cpp
-        parser/parser/Parser.hpp
+        parser/parser/parser.cpp
+        parser/parser/parser.hpp
 )
