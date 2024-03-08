@@ -31,4 +31,15 @@ add_executable(compiler
         Driver.cpp
         parser/parser/parser.cpp
         parser/parser/parser.hpp
+        parser/parser/parser.c
+        parser/parser/parser.h
+        util/stack.c
+        util/stack.h
+        util/hashset.c
+        util/hashset.h
 )
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(deps REQUIRED IMPORTED_TARGET glib-2.0)
+target_link_libraries(compiler PkgConfig::deps)
+
