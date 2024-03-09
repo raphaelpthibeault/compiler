@@ -33,10 +33,6 @@ add_executable(compiler
         parser/parser/parser.hpp
         parser/parser/parser.c
         parser/parser/parser.h
-        util/stack.c
-        util/stack.h
-        util/hashset.c
-        util/hashset.h
 )
 
 find_package(PkgConfig REQUIRED)
