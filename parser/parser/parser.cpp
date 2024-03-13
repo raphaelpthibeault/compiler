@@ -1,8 +1,11 @@
 #include <stack>
 #include <string>
 #include <parser.hpp>
+#include <algorithm>
+#include <iostream>
 
 
+/* parse functions */
 void skipError(Lexer& lexer, std::stack<std::string>& parseStack, Token& lookahead);
 void inverseRHSMultiplePush(std::stack<std::string>& parseStack, const std::vector<std::string>& rule);
 bool isTerminal(const std::string& symbol);
@@ -145,6 +148,514 @@ std::unordered_map<std::string, std::unordered_set<std::string>> FollowSets = {
 };
 
 
+// switch on semantic action, call the appropriate function, return true if it was a semantic action
+bool callSemanticAction(std::stack<ASTNode*>& semanticStack, const std::string& action, Token &a) {
+    if (action == "AA") {
+        semanticStack.push(new EpsilonNode());
+        return true;
+    } else if (action == "A1") {
+        if (a->type == TokenTypePlus || a->type == TokenTypeMinus || a->type == TokenTypeOr) {
+            semanticStack.push(new AddOpNode(a->value));
+            return true;
+        } else {
+            return false;
+        }
+    } else if (action == "A2") {
+        std::vector<ASTNode*> children;
+        while (semanticStack.top()->type != Epsilon) {
+            children.push_back(semanticStack.top());
+            semanticStack.pop();
+        }
+
+        semanticStack.pop();
+        std::reverse(children.begin(), children.end());
+
+        ASTNode* aparamslist = new AParamsListNode();
+        for (auto child : children) {
+            aparamslist->children.push_back(child);
+        }
+        semanticStack.push(aparamslist);
+        return true;
+    } else if (action == "A3") {
+        std::vector<ASTNode*> children;
+        while (semanticStack.top()->type != Epsilon) {
+            children.push_back(semanticStack.top());
+            semanticStack.pop();
+        }
+
+        semanticStack.pop();
+        std::reverse(children.begin(), children.end());
+
+        ASTNode *arraysizelist = new ArraySizeListNode();
+        for (auto child : children) {
+            arraysizelist->children.push_back(child);
+        }
+        semanticStack.push(arraysizelist);
+        return true;
+    } else if (action == "A4") {
+        ASTNode *term1 = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *addop = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *term2 = semanticStack.top();
+        semanticStack.pop();
+
+        addop->children.push_back(term2);
+        addop->children.push_back(term1);
+
+        return true;
+    } else if (action == "A5") {
+        if (a->type == TokenTypeAssign) {
+            semanticStack.push(new AssignOpNode(a->value));
+            return true;
+        } else {
+            return false;
+        }
+    } else if (action == "B1") {
+        std::vector<ASTNode*> children;
+        while (semanticStack.top()->type != Epsilon) {
+            children.push_back(semanticStack.top());
+            semanticStack.pop();
+        }
+
+        semanticStack.pop();
+        std::reverse(children.begin(), children.end());
+
+        ASTNode *vardecorstatblock = new VarDeclOrStatBlockNode();
+        for (auto child : children) {
+            vardecorstatblock->children.push_back(child);
+        }
+        semanticStack.push(vardecorstatblock);
+        return true;
+    } else if (action == "B2") {
+        ASTNode *statBlock = new StatBlockNode();
+        semanticStack.push(statBlock);
+        return true;
+    } else if (action == "B3") {
+        std::vector<ASTNode*> children;
+        ASTNode *statblock = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *statement = semanticStack.top();
+        semanticStack.pop();
+
+        children.push_back(statement);
+        children.push_back(statblock);
+        return true;
+    } else if (action == "B4") {
+        std::vector<ASTNode*> children;
+        while (semanticStack.top()->type != Epsilon) {
+            children.push_back(semanticStack.top());
+            semanticStack.pop();
+        }
+
+        semanticStack.pop();
+        std::reverse(children.begin(), children.end());
+
+        ASTNode *statblock = new StatBlockNode();
+        for (auto child : children) {
+            statblock->children.push_back(child);
+        }
+        semanticStack.push(statblock);
+        return true;
+    } else if (action == "D1") {
+        ASTNode *dot = new DotNode();
+        semanticStack.push(dot);
+        return true;
+    } else if (action == "D2") {
+        ASTNode *dotParam2 = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *dot = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *dotParam1 = semanticStack.top();
+        semanticStack.pop();
+
+        dot->children.push_back(dotParam1);
+        dot->children.push_back(dotParam2);
+
+        return true;
+    } else if (action == "F1") {
+        ASTNode *intlit = new IntlitNode(a->value);
+        semanticStack.push(intlit);
+        return true;
+    } else if (action == "F2") {
+        ASTNode *floatlit = new FloatlitNode(a->value);
+        semanticStack.push(floatlit);
+        return true;
+    } else if (action == "F3") {
+        ASTNode *not_ = new NotNode();
+        semanticStack.push(not_);
+        return true;
+    } else if (action == "F4") {
+        ASTNode *factor = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *not_ = semanticStack.top();
+        semanticStack.pop();
+
+        not_->children.push_back(factor);
+        semanticStack.push(not_);
+        return true;
+    } else if (action == "F5") {
+        ASTNode *sign = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *factor = semanticStack.top();
+        semanticStack.pop();
+
+        sign->children.push_back(factor);
+        semanticStack.push(sign);
+        return true;
+    } else if (action == "F7") {
+        ASTNode *functionCall = new FunctionCallNode();
+        ASTNode *aparams = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *id = semanticStack.top();
+        semanticStack.pop();
+
+        functionCall->children.push_back(id);
+        functionCall->children.push_back(aparams);
+        semanticStack.push(functionCall);
+        return true;
+    } else if (action == "F8") {
+        ASTNode *variable = new VariableNode();
+        ASTNode *indiceList = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *id = semanticStack.top();
+
+        variable->children.push_back(id);
+        variable->children.push_back(indiceList);
+
+        semanticStack.push(variable);
+        return true;
+    } else if (action == "F10") {
+        ASTNode *funcdecl = new FuncDeclNode();
+        ASTNode *rettype = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *fparamlist = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *id = semanticStack.top();
+        semanticStack.pop();
+
+        funcdecl->children.push_back(id);
+        funcdecl->children.push_back(fparamlist);
+        funcdecl->children.push_back(rettype);
+
+        semanticStack.push(funcdecl);
+        return true;
+    } else if (action == "F11") {
+        ASTNode *fparam = new FParamNode();
+        ASTNode *arraysizelist = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *type = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *id = semanticStack.top();
+        semanticStack.pop();
+
+        fparam->children.push_back(id);
+        fparam->children.push_back(type);
+        fparam->children.push_back(arraysizelist);
+
+        semanticStack.push(fparam);
+        return true;
+    } else if (action == "F12") {
+        std::vector<ASTNode*> children;
+        while (semanticStack.top()->type != Epsilon) {
+            children.push_back(semanticStack.top());
+            semanticStack.pop();
+        }
+
+        semanticStack.pop();
+        std::reverse(children.begin(), children.end());
+
+        ASTNode *fparamlist = new FParamListNode();
+        for (auto child : children) {
+            fparamlist->children.push_back(child);
+        }
+
+        semanticStack.push(fparamlist);
+        return true;
+    } else if (action == "F13") {
+        ASTNode *funcdef = new FuncDefNode();
+        ASTNode *vardeclorstatblock = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *rettype = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *fparamlist = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *id = semanticStack.top();
+        semanticStack.pop();
+
+        funcdef->children.push_back(id);
+        funcdef->children.push_back(fparamlist);
+        funcdef->children.push_back(rettype);
+        funcdef->children.push_back(vardeclorstatblock);
+
+        semanticStack.push(funcdef);
+        return true;
+    } else if (action == "I1") {
+        ASTNode *id = new IdNode(a->value);
+        semanticStack.push(id);
+        return true;
+    } else if (action == "I2") {
+        std::vector<ASTNode*> children;
+        while (semanticStack.top()->type != Epsilon) {
+            children.push_back(semanticStack.top());
+            semanticStack.pop();
+        }
+
+        semanticStack.pop();
+        std::reverse(children.begin(), children.end());
+
+        ASTNode *indiceList = new IndiceListNode();
+        for (auto child : children) {
+            indiceList->children.push_back(child);
+        }
+
+        semanticStack.push(indiceList);
+        return true;
+    } else if (action == "I3") {
+        std::vector<ASTNode*> children;
+        while (semanticStack.top()->type != Epsilon) {
+            children.push_back(semanticStack.top());
+            semanticStack.pop();
+        }
+
+        semanticStack.pop();
+        std::reverse(children.begin(), children.end());
+
+        ASTNode *implFuncList = new ImplFuncListNode();
+        for (auto child : children) {
+            implFuncList->children.push_back(child);
+        }
+
+        semanticStack.push(implFuncList);
+        return true;
+    } else if (action == "M1") {
+        ASTNode *multop = new MultOpNode(a->value);
+        semanticStack.push(multop);
+        return true;
+    } else if (action == "M2") {
+        ASTNode *member = new MemberNode();
+        ASTNode *memberdecl = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *visibility = semanticStack.top();
+        semanticStack.pop();
+
+        member->children.push_back(visibility);
+        member->children.push_back(memberdecl);
+
+        semanticStack.push(member);
+        return true;
+    } else if (action == "P1") {
+        ASTNode *structdecl = new StructDeclNode();
+        ASTNode *memberlist = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *inheritlist = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *id = semanticStack.top();
+        semanticStack.pop();
+
+        structdecl->children.push_back(id);
+        structdecl->children.push_back(inheritlist);
+        structdecl->children.push_back(memberlist);
+
+        semanticStack.push(structdecl);
+        return true;
+    } else if (action == "P2") {
+        ASTNode *impldef = new ImplDefNode();
+        ASTNode *implfuncList = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *id = semanticStack.top();
+        semanticStack.pop();
+
+        impldef->children.push_back(id);
+        impldef->children.push_back(implfuncList);
+
+        semanticStack.push(impldef);
+        return true;
+    } else if (action == "R1") {
+        ASTNode *relop = new RelOpNode(a->value);
+        semanticStack.push(relop);
+        return true;
+    } else if (action == "R2") {
+        ASTNode *factor2 = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *multop = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *factor1 = semanticStack.top();
+        semanticStack.pop();
+
+        multop->children.push_back(factor1);
+        multop->children.push_back(factor2);
+
+        return true;
+    } else if (action == "R3") {
+        ASTNode *relexpr = new RelExprNode();
+        ASTNode *arithExpr2 = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *relop = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *arithExpr1 = semanticStack.top();
+        semanticStack.pop();
+
+        relexpr->children.push_back(arithExpr1);
+        relexpr->children.push_back(relop);
+        relexpr->children.push_back(arithExpr2);
+
+        semanticStack.push(relexpr);
+        return true;
+    } else if (action == "S1") {
+        ASTNode *sign = new SignNode(a->value);
+        semanticStack.push(sign);
+        return true;
+    } else if (action == "S2") {
+        std::vector<ASTNode*> children;
+        while (semanticStack.top()->type != Epsilon) {
+            children.push_back(semanticStack.top());
+            semanticStack.pop();
+        }
+
+        semanticStack.pop();
+        std::reverse(children.begin(), children.end());
+
+        ASTNode *inheritlist = new InheritListNode();
+        for (auto child : children) {
+            inheritlist->children.push_back(child);
+        }
+
+        semanticStack.push(inheritlist);
+        return true;
+    } else if (action == "S3") {
+        std::vector<ASTNode*> children;
+        while (semanticStack.top()->type != Epsilon) {
+            children.push_back(semanticStack.top());
+            semanticStack.pop();
+        }
+
+        semanticStack.pop();
+        std::reverse(children.begin(), children.end());
+
+        ASTNode *memberlist = new MemberListNode();
+        for (auto child : children) {
+            memberlist->children.push_back(child);
+        }
+
+        semanticStack.push(memberlist);
+        return true;
+    } else if (action == "S10") {
+        ASTNode *ifStat = new IfStatNode();
+        ASTNode *statblock2 = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *statblock1 = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *relexpr = semanticStack.top();
+        semanticStack.pop();
+
+        ifStat->children.push_back(relexpr);
+        ifStat->children.push_back(statblock1);
+        ifStat->children.push_back(statblock2);
+
+        semanticStack.push(ifStat);
+        return true;
+    } else if (action == "S11") {
+        ASTNode *whileStat = new WhileStatNode();
+        ASTNode *statblock = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *relexpr = semanticStack.top();
+        semanticStack.pop();
+
+        whileStat->children.push_back(relexpr);
+        whileStat->children.push_back(statblock);
+
+        semanticStack.push(whileStat);
+        return true;
+    } else if (action == "S12") {
+        ASTNode *readStat = new ReadStatNode();
+        ASTNode *variable = semanticStack.top();
+        semanticStack.pop();
+
+        readStat->children.push_back(variable);
+
+        semanticStack.push(readStat);
+        return true;
+    } else if (action == "S13") {
+        ASTNode *writeStat = new WriteStatNode();
+        ASTNode *expression = semanticStack.top();
+        semanticStack.pop();
+
+        writeStat->children.push_back(expression);
+
+        semanticStack.push(writeStat);
+        return true;
+    } else if (action == "S14") {
+        ASTNode *returnStat = new ReturnStatNode();
+        ASTNode *expression = semanticStack.top();
+        semanticStack.pop();
+
+        returnStat->children.push_back(expression);
+
+        semanticStack.push(returnStat);
+        return true;
+    } else if (action == "S15") {
+        ASTNode *assignStat = new AssignStatNode();
+        ASTNode *expression = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *assignop = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *variable = semanticStack.top();
+        semanticStack.pop();
+
+        assignStat->children.push_back(variable);
+        assignStat->children.push_back(assignop);
+        assignStat->children.push_back(expression);
+
+        semanticStack.push(assignStat);
+        return true;
+    } else if (action == "T1") {
+        ASTNode *type = new TypeNode(a->value);
+        semanticStack.push(type);
+        return true;
+    } else if (action == "V1") {
+        ASTNode *visibility = new VisibilityNode(a->value);
+        semanticStack.push(visibility);
+        return true;
+    } else if (action == "V2") {
+        ASTNode *vardecl = new VarDeclNode();
+        ASTNode *arraysizelist = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *type = semanticStack.top();
+        semanticStack.pop();
+        ASTNode *id = semanticStack.top();
+        semanticStack.pop();
+
+        vardecl->children.push_back(id);
+        vardecl->children.push_back(type);
+        vardecl->children.push_back(arraysizelist);
+
+        semanticStack.push(vardecl);
+        return true;
+    } else if (action == "ZZ") {
+        std::vector<ASTNode*> children;
+
+        while (semanticStack.top()->type != Epsilon) {
+            children.push_back(semanticStack.top());
+            semanticStack.pop();
+        }
+
+        semanticStack.pop();
+        std::reverse(children.begin(), children.end());
+
+        ASTNode *prog = new ProgNode();
+        for (auto child : children) {
+            prog->children.push_back(child);
+        }
+
+        semanticStack.push(prog);
+        return true;
+    }
+
+    return false;
+}
+
+
 void parseCSVIntoTT(const std::string& filePath, std::map<TableKey, ProductionRule>& TT) {
     std::ifstream file(filePath);
     std::string line;
@@ -186,34 +697,43 @@ void parseCSVIntoTT(const std::string& filePath, std::map<TableKey, ProductionRu
         }
     }
 
-    // add EOF to REPTPROG0
+    // add EOF to REPTPROG0 and ZZ
     TableKey key = {"REPTPROG0", "EOF"};
     ProductionRule production;
     production.emplace_back("REBTPROG0");
     production.emplace_back("\xC2\xA0");
     production.emplace_back("EOF");
     TT[key] = production;
+
+    TableKey key2 = {"REPTPROG0", "ZZ"};
+    ProductionRule production2;
+    production.emplace_back("ZZ");
+    production.emplace_back("\xC2\xA0");
+    production.emplace_back("EOF");
+    TT[key2] = production2;
 }
-
-
-
-
 
 bool parse(Lexer lexer, std::map<TableKey, ProductionRule>& TT, std::ofstream& outfile, std::ofstream& errorfile) {
     bool accepted = true;
     std::stack<std::string> parseStack;
+    std::stack<ASTNode*> semanticStack;
 
     parseStack.emplace("$");
     parseStack.emplace("START");
     Token a = getNextToken(lexer);
+    Token prev = a;
+
     while (parseStack.top() != "$") {
         printStack(parseStack, outfile);
-
         std::string x = parseStack.top();
-
+        if (callSemanticAction(semanticStack, x, prev)) {
+            parseStack.pop();
+            continue;
+        }
         if (isTerminal(x)) {
             if (x == tokenTypeToString(a->type)) {
                 parseStack.pop();
+                prev = a;
                 a = getNextToken(lexer);
             } else {
 
@@ -224,7 +744,11 @@ bool parse(Lexer lexer, std::map<TableKey, ProductionRule>& TT, std::ofstream& o
             }
         } else {
             if (a->type == TokenTypeEOF) {
-                return false;
+                if (TT.find({x, "EOF"}) != TT.end()) { // REPTPROG0 and ZZ
+                    parseStack.pop();
+                    continue;
+                }
+                return false; // unexpected EOF
             }
 
             TableKey key = {x, tokenTypeToString(a->type)};

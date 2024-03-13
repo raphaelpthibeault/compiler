@@ -209,12 +209,12 @@ TEST(lexerNextToken, keywords) {
     ASSERT_EQ(token->line, 1);
 
     token = lexerNextToken(lexer);
-    ASSERT_EQ(token->type, TokenTypeInt);
+    ASSERT_EQ(token->type, TokenTypeIntType);
     ASSERT_STREQ(token->value, "integer");
     ASSERT_EQ(token->line, 1);
 
     token = lexerNextToken(lexer);
-    ASSERT_EQ(token->type, TokenTypeFloat);
+    ASSERT_EQ(token->type, TokenTypeFloatType);
     ASSERT_STREQ(token->value, "float");
     ASSERT_EQ(token->line, 1);
 
