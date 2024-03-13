@@ -12,6 +12,65 @@ bool isTerminal(const std::string& symbol);
 std::string tokenTypeToString(TokenType type);
 void printStack(const std::stack<std::string>& stack, std::ofstream& outfile);
 
+/* print AST */
+std::string getASTNodeTypeToString(ASTNodeType type) {
+    switch (type) {
+        case Epsilon: return "Epsilon";
+        case Prog: return "Prog";
+        case StructDecl: return "StructDecl";
+        case FuncDef: return "FuncDef";
+        case ImplDef: return "ImplDef";
+        case InheritList: return "InheritList";
+        case AddOp: return "AddOp";
+        case AParamsList: return "AParamsList";
+        case ArraySizeList: return "ArraySizeList";
+        case AssignOp: return "AssignOp";
+        case VarDeclOrStatBlock: return "VarDeclOrStatBlock";
+        case StatBlock: return "StatBlock";
+        case Dot: return "Dot";
+        case Intlit: return "Intlit";
+        case Floatlit: return "Floatlit";
+        case Not: return "Not";
+        case Sign: return "Sign";
+        case FunctionCall: return "FunctionCall";
+        case Variable: return "Variable";
+        case FuncDecl: return "FuncDecl";
+        case FParam: return "FParam";
+        case FParamList: return "FParamList";
+        case Id: return "Id";
+        case IndiceList: return "IndiceList";
+        case ImplFuncList: return "ImplFuncList";
+        case MultOp: return "MultOp";
+        case Member: return "Member";
+        case RelOp: return "RelOp";
+        case RelExpr: return "RelExpr";
+        case MemberList: return "MemberList";
+        case IfStat: return "IfStat";
+        case WhileStat: return "WhileStat";
+        case ReadStat: return "ReadStat";
+        case WriteStat: return "WriteStat";
+        case ReturnStat: return "ReturnStat";
+        case AssignStat: return "AssignStat";
+        case Type: return "Type";
+        case Visibility: return "Visibility";
+        case VarDecl: return "VarDecl";
+        default: return "Unknown";
+    }
+}
+
+void printAST(std::ofstream& astfile, const ASTNode* node, int depth = 0) {
+    if (!node) return;
+
+    // Print leading spaces to indicate depth
+    std::string indent(depth * 2, ' ');
+    astfile << indent << getASTNodeTypeToString(node->type) << std::endl;
+
+    // Recursively print children
+    for (ASTNode* child : node->children) {
+        printAST(astfile, child, depth + 1);
+    }
+}
+
 // hard-coded first and follow sets for use in error handling and recovery
 std::unordered_map<std::string, std::unordered_set<std::string>> FirstSets = {
         {"ADDOP", {"plus", "minus", "or"}},
@@ -655,7 +714,6 @@ bool callSemanticAction(std::stack<ASTNode*>& semanticStack, const std::string& 
     return false;
 }
 
-
 void parseCSVIntoTT(const std::string& filePath, std::map<TableKey, ProductionRule>& TT) {
     std::ifstream file(filePath);
     std::string line;
@@ -713,7 +771,7 @@ void parseCSVIntoTT(const std::string& filePath, std::map<TableKey, ProductionRu
     TT[key2] = production2;
 }
 
-bool parse(Lexer lexer, std::map<TableKey, ProductionRule>& TT, std::ofstream& outfile, std::ofstream& errorfile) {
+bool parse(Lexer lexer, std::map<TableKey, ProductionRule> &TT, std::ofstream &outfile, std::ofstream &errorfile, std::ofstream &astfile) {
     bool accepted = true;
     std::stack<std::string> parseStack;
     std::stack<ASTNode*> semanticStack;
@@ -768,9 +826,13 @@ bool parse(Lexer lexer, std::map<TableKey, ProductionRule>& TT, std::ofstream& o
     }
 
     printStack(parseStack, outfile);
+
+    // print AST
+    ASTNode* root = semanticStack.top(); // should be PROG
+    printAST(astfile, root, 0);
+
     return accepted;
 }
-
 
 void inverseRHSMultiplePush(std::stack<std::string>& parseStack, const std::vector<std::string>& rule) {
     for (auto it = rule.rbegin(); it != rule.rend()-2; ++it) { // should skip the first element and the arrow
