@@ -63,9 +63,11 @@ enum ASTNodeType {
 class ASTNode {
 public:
     ASTNodeType type;
+    std::string value;
     std::vector<ASTNode*> children;
 
-    explicit ASTNode(ASTNodeType type) : type(type) {}
+    explicit ASTNode(ASTNodeType type, std::string value) : type(type), value(std::move(value)) {}
+
     virtual ~ASTNode() {
         for (auto child : children) {
             delete child;
@@ -75,211 +77,199 @@ public:
 
 class EpsilonNode : public ASTNode {
 public:
-    EpsilonNode() : ASTNode(Epsilon) {}
-};
-
-class ProgNode : public ASTNode {
-public:
-    ProgNode() : ASTNode(Prog) {}
+    EpsilonNode() : ASTNode(Epsilon, "") {}
 };
 
 class StructDeclNode : public ASTNode {
 public:
-    std::string id;
-    StructDeclNode() : ASTNode(StructDecl) {}
+    explicit StructDeclNode() : ASTNode(StructDecl, "") {}
 };
 
 class FuncDefNode : public ASTNode {
 public:
-    std::string id;
-    FuncDefNode() : ASTNode(FuncDef) {}
+    explicit FuncDefNode() : ASTNode(FuncDef, "") {}
 };
 
 class ImplDefNode : public ASTNode {
 public:
-    std::string id;
-    ImplDefNode() : ASTNode(ImplDef) {}
-};
-
-class InheritListNode : public ASTNode {
-public:
-    InheritListNode() : ASTNode(InheritList) {}
+    explicit ImplDefNode() : ASTNode(ImplDef, "") {}
 };
 
 class AddOpNode : public ASTNode {
 public:
-    std::string op;
-    explicit AddOpNode(std::string  op) : ASTNode(AddOp), op(std::move(op)) {}
+    explicit AddOpNode(const std::string& op) : ASTNode(AddOp, op) {}
 };
 
 class AParamsListNode : public ASTNode {
 public:
-    AParamsListNode() : ASTNode(AParamsList) {}
+    AParamsListNode() : ASTNode(AParamsList, "") {}
 };
 
 class ArraySizeListNode : public ASTNode {
 public:
-    ArraySizeListNode() : ASTNode(ArraySizeList) {}
+    ArraySizeListNode() : ASTNode(ArraySizeList, "") {}
 };
 
 class AssignOpNode : public ASTNode {
 public:
-    std::string op;
-    explicit AssignOpNode(std::string  op) : ASTNode(AssignOp), op(std::move(op)) {}
+    explicit AssignOpNode(const std::string& op) : ASTNode(AssignOp, op) {}
 };
 
 class VarDeclOrStatBlockNode : public ASTNode {
 public:
-    VarDeclOrStatBlockNode() : ASTNode(VarDeclOrStatBlock) {}
+    VarDeclOrStatBlockNode() : ASTNode(VarDeclOrStatBlock, "") {}
 };
 
 class StatBlockNode : public ASTNode {
 public:
-    StatBlockNode() : ASTNode(StatBlock) {}
+    StatBlockNode() : ASTNode(StatBlock, "") {}
 };
 
 class DotNode : public ASTNode {
 public:
-    DotNode() : ASTNode(Dot) {}
+    DotNode() : ASTNode(Dot, "") {}
 };
 
 class IntlitNode : public ASTNode {
 public:
-    std::string value;
-    explicit IntlitNode(std::string  value) : ASTNode(Intlit), value(std::move(value)) {}
+    explicit IntlitNode(const std::string& value) : ASTNode(Intlit, value) {}
 };
 
 class FloatlitNode : public ASTNode {
 public:
-    std::string value;
-    explicit FloatlitNode(std::string  value) : ASTNode(Floatlit), value(std::move(value)) {}
+    explicit FloatlitNode(const std::string& value) : ASTNode(Floatlit, value) {}
 };
 
 class NotNode : public ASTNode {
 public:
-    NotNode() : ASTNode(Not) {}
+    explicit NotNode(const std::string& value) : ASTNode(Not, value) {}
 };
 
 class SignNode : public ASTNode {
 public:
-    std::string sign;
-    explicit SignNode(std::string  sign) : ASTNode(Sign), sign(std::move(sign)) {}
+    explicit SignNode(const std::string& sign) : ASTNode(Sign, sign) {}
 };
 
 class FunctionCallNode : public ASTNode {
 public:
-    FunctionCallNode() : ASTNode(FunctionCall) {}
+    FunctionCallNode() : ASTNode(FunctionCall, "") {}
 };
 
 class VariableNode : public ASTNode {
 public:
-    VariableNode() : ASTNode(Variable) {}
+    VariableNode() : ASTNode(Variable, "") {}
 };
 
 class FuncDeclNode : public ASTNode {
 public:
-    FuncDeclNode() : ASTNode(FuncDecl) {}
+    FuncDeclNode() : ASTNode(FuncDecl, "") {}
 };
 
 class FParamNode : public ASTNode {
 public:
-    FParamNode() : ASTNode(FParam) {}
+    FParamNode() : ASTNode(FParam, "") {}
 };
 
 class FParamListNode : public ASTNode {
 public:
-    FParamListNode() : ASTNode(FParamList) {}
+    FParamListNode() : ASTNode(FParamList, "") {}
 };
 
 class IdNode : public ASTNode {
 public:
-    std::string id;
-    explicit IdNode(std::string  id) : ASTNode(Id), id(std::move(id)) {}
+    explicit IdNode(const std::string& id) : ASTNode(Id, id) {}
 };
 
 class IndiceListNode : public ASTNode {
 public:
-    IndiceListNode() : ASTNode(IndiceList) {}
+    IndiceListNode() : ASTNode(IndiceList, "") {}
 };
 
 class ImplFuncListNode : public ASTNode {
 public:
-    ImplFuncListNode() : ASTNode(ImplFuncList) {}
+    ImplFuncListNode() : ASTNode(ImplFuncList, "") {}
 };
 
 class MultOpNode : public ASTNode {
 public:
-    std::string op;
-    explicit MultOpNode(std::string  op) : ASTNode(MultOp), op(std::move(op)) {}
+    explicit MultOpNode(const std::string& op) : ASTNode(MultOp, op) {}
 };
 
 class MemberNode : public ASTNode {
 public:
-    MemberNode() : ASTNode(Member) {}
+    MemberNode() : ASTNode(Member, "") {}
 };
 
 class RelOpNode : public ASTNode {
 public:
-    std::string op;
-    explicit RelOpNode(std::string  op) : ASTNode(RelOp), op(std::move(op)) {}
+    explicit RelOpNode(const std::string& op) : ASTNode(RelOp, op) {}
 };
 
 class RelExprNode : public ASTNode {
 public:
-    RelExprNode() : ASTNode(RelExpr) {}
+    RelExprNode() : ASTNode(RelExpr, "") {}
 };
 
 class MemberListNode : public ASTNode {
 public:
-    MemberListNode() : ASTNode(MemberList) {}
+    MemberListNode() : ASTNode(MemberList, "") {}
 };
 
 class IfStatNode : public ASTNode {
 public:
-    IfStatNode() : ASTNode(IfStat) {}
+    IfStatNode() : ASTNode(IfStat, "") {}
 };
 
 class WhileStatNode : public ASTNode {
 public:
-    WhileStatNode() : ASTNode(WhileStat) {}
+    WhileStatNode() : ASTNode(WhileStat, "") {}
 };
 
 class ReadStatNode : public ASTNode {
 public:
-    ReadStatNode() : ASTNode(ReadStat) {}
+    ReadStatNode() : ASTNode(ReadStat, "") {}
 };
 
 class WriteStatNode : public ASTNode {
 public:
-    WriteStatNode() : ASTNode(WriteStat) {}
+    WriteStatNode() : ASTNode(WriteStat, "") {}
 };
 
 class ReturnStatNode : public ASTNode {
 public:
-    ReturnStatNode() : ASTNode(ReturnStat) {}
+    ReturnStatNode() : ASTNode(ReturnStat, "") {}
 };
 
 class AssignStatNode : public ASTNode {
 public:
-    AssignStatNode() : ASTNode(AssignStat) {}
+    AssignStatNode() : ASTNode(AssignStat, "") {}
 };
 
 class TypeNode : public ASTNode {
 public:
-    std::string typeVal;
-    explicit TypeNode(std::string  typeVal) : ASTNode(Type), typeVal(std::move(typeVal)) {}
+    explicit TypeNode(const std::string& typeVal) : ASTNode(Type, typeVal) {}
 };
 
 class VisibilityNode : public ASTNode {
 public:
-    std::string visibility;
-    explicit VisibilityNode(std::string  visibility) : ASTNode(Visibility), visibility(std::move(visibility)) {}
+    explicit VisibilityNode(const std::string& visibility) : ASTNode(Visibility, visibility) {}
 };
 
 class VarDeclNode : public ASTNode {
 public:
-    VarDeclNode() : ASTNode(VarDecl) {}
+    VarDeclNode() : ASTNode(VarDecl, "") {}
 };
+
+class InheritListNode : public ASTNode {
+public:
+    InheritListNode() : ASTNode(InheritList, "") {}
+};
+
+class ProgNode : public ASTNode {
+public:
+    ProgNode() : ASTNode(Prog, "") {}
+};
+
 
 /* factories for creating AST nodes */
 /*

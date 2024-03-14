@@ -63,7 +63,7 @@ void printAST(std::ofstream& astfile, const ASTNode* node, int depth = 0) {
 
     // Print leading spaces to indicate depth
     std::string indent(depth * 2, ' ');
-    astfile << indent << getASTNodeTypeToString(node->type) << std::endl;
+    astfile << indent << getASTNodeTypeToString(node->type) << " : " << node->value << std::endl;
 
     // Recursively print children
     for (ASTNode* child : node->children) {
@@ -262,6 +262,7 @@ bool callSemanticAction(std::stack<ASTNode*>& semanticStack, const std::string& 
         addop->children.push_back(term2);
         addop->children.push_back(term1);
 
+        semanticStack.push(addop);
         return true;
     } else if (action == "A5") {
         if (a->type == TokenTypeAssign) {
@@ -291,14 +292,14 @@ bool callSemanticAction(std::stack<ASTNode*>& semanticStack, const std::string& 
         semanticStack.push(statBlock);
         return true;
     } else if (action == "B3") {
-        std::vector<ASTNode*> children;
         ASTNode *statblock = semanticStack.top();
         semanticStack.pop();
         ASTNode *statement = semanticStack.top();
         semanticStack.pop();
 
-        children.push_back(statement);
-        children.push_back(statblock);
+        statblock->children.push_back(statement);
+        semanticStack.push(statblock);
+
         return true;
     } else if (action == "B4") {
         std::vector<ASTNode*> children;
@@ -331,6 +332,7 @@ bool callSemanticAction(std::stack<ASTNode*>& semanticStack, const std::string& 
         dot->children.push_back(dotParam1);
         dot->children.push_back(dotParam2);
 
+        semanticStack.push(dot);
         return true;
     } else if (action == "F1") {
         ASTNode *intlit = new IntlitNode(a->value);
@@ -341,7 +343,7 @@ bool callSemanticAction(std::stack<ASTNode*>& semanticStack, const std::string& 
         semanticStack.push(floatlit);
         return true;
     } else if (action == "F3") {
-        ASTNode *not_ = new NotNode();
+        ASTNode *not_ = new NotNode("!");
         semanticStack.push(not_);
         return true;
     } else if (action == "F4") {
@@ -378,6 +380,7 @@ bool callSemanticAction(std::stack<ASTNode*>& semanticStack, const std::string& 
         ASTNode *indiceList = semanticStack.top();
         semanticStack.pop();
         ASTNode *id = semanticStack.top();
+        semanticStack.pop();
 
         variable->children.push_back(id);
         variable->children.push_back(indiceList);
@@ -545,6 +548,7 @@ bool callSemanticAction(std::stack<ASTNode*>& semanticStack, const std::string& 
         multop->children.push_back(factor1);
         multop->children.push_back(factor2);
 
+        semanticStack.push(multop);
         return true;
     } else if (action == "R3") {
         ASTNode *relexpr = new RelExprNode();
@@ -784,6 +788,12 @@ bool parse(Lexer lexer, std::map<TableKey, ProductionRule> &TT, std::ofstream &o
     while (parseStack.top() != "$") {
         printStack(parseStack, outfile);
         std::string x = parseStack.top();
+
+        std::cout << "x: " << x << " a: " << tokenTypeToString(a->type) << " " << a->value << " " << a->line << std::endl;
+        if (a->line == 36) {
+            std::cout << "";
+        }
+
         if (callSemanticAction(semanticStack, x, prev)) {
             parseStack.pop();
             continue;
