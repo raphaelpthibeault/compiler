@@ -789,11 +789,6 @@ bool parse(Lexer lexer, std::map<TableKey, ProductionRule> &TT, std::ofstream &o
         printStack(parseStack, outfile);
         std::string x = parseStack.top();
 
-        std::cout << "x: " << x << " a: " << tokenTypeToString(a->type) << " " << a->value << " " << a->line << std::endl;
-        if (a->line == 36) {
-            std::cout << "";
-        }
-
         if (callSemanticAction(semanticStack, x, prev)) {
             parseStack.pop();
             continue;
