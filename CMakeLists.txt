@@ -21,6 +21,8 @@ include_directories(
         util
         lexer/lexer
         parser/parser
+        parser/ast
+        semantic/semantic
 )
 
 add_executable(compiler
@@ -31,8 +33,9 @@ add_executable(compiler
         Driver.cpp
         parser/parser/parser.cpp
         parser/parser/parser.hpp
-        parser/parser/parser.c
-        parser/parser/parser.h
+        semantic/semantic/semantic.cpp
+        semantic/semantic/semantic.hpp
+        parser/ast/ast.hpp
 )
 
 find_package(PkgConfig REQUIRED)

@@ -207,7 +207,7 @@ std::unordered_map<std::string, std::unordered_set<std::string>> FollowSets = {
 };
 
 
-// switch on semantic action, call the appropriate function, return true if it was a semantic action
+/* switch on semantic action, call the appropriate function, return true if it was a semantic action */
 bool callSemanticAction(std::stack<ASTNode*>& semanticStack, const std::string& action, Token &a) {
     if (action == "AA") {
         semanticStack.push(new EpsilonNode());
@@ -845,8 +845,6 @@ void inverseRHSMultiplePush(std::stack<std::string>& parseStack, const std::vect
             parseStack.push(*it);
         }
     }
-
-
 }
 
 std::string tokenTypeToString(TokenType type) {
