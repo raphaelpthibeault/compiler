@@ -775,7 +775,7 @@ void parseCSVIntoTT(const std::string& filePath, std::map<TableKey, ProductionRu
     TT[key2] = production2;
 }
 
-bool parse(Lexer lexer, std::map<TableKey, ProductionRule> &TT, std::ofstream &outfile, std::ofstream &errorfile, std::ofstream &astfile) {
+ASTNode *parse(Lexer lexer, std::map<TableKey, ProductionRule> &TT, std::ofstream &outfile, std::ofstream &errorfile, std::ofstream &astfile) {
     bool accepted = true;
     std::stack<std::string> parseStack;
     std::stack<ASTNode*> semanticStack;
@@ -811,7 +811,7 @@ bool parse(Lexer lexer, std::map<TableKey, ProductionRule> &TT, std::ofstream &o
                     parseStack.pop();
                     continue;
                 }
-                return false; // unexpected EOF
+                return nullptr; // unexpected EOF
             }
 
             TableKey key = {x, tokenTypeToString(a->type)};
@@ -833,10 +833,14 @@ bool parse(Lexer lexer, std::map<TableKey, ProductionRule> &TT, std::ofstream &o
     printStack(parseStack, outfile);
 
     // print AST
-    ASTNode* root = semanticStack.top(); // should be PROG
-    printAST(astfile, root, 0);
+    std::stack<ASTNode*> tempStack = semanticStack;
+    printAST(astfile, tempStack.top(), 0);
 
-    return accepted;
+    if (accepted) {
+        return semanticStack.top();
+    } else {
+        return nullptr;
+    }
 }
 
 void inverseRHSMultiplePush(std::stack<std::string>& parseStack, const std::vector<std::string>& rule) {

@@ -7,8 +7,8 @@
 class ASTNodeVisitor;
 class SymbolTable;
 class SymbolTableEntry;
-class SymbolTableGenerator;
-class SemanticAnalyzer;
+class SymbolTableCreationVisitor;
+
 
 class StructEntry;
 class FuncEntry;
@@ -52,8 +52,10 @@ class AssignStatNode;
 class TypeNode;
 class VisibilityNode;
 class VarDeclNode;
+class EpsilonNode;
 
-/* abstract syntax tree generation */
+/* $begin ASTNodes */
+
 enum ASTNodeType {
     Epsilon,
     Prog,
@@ -96,12 +98,17 @@ enum ASTNodeType {
     VarDecl
 };
 
-
 class ASTNode {
 public:
     ASTNodeType type;
     std::string value;
     std::vector<ASTNode*> children;
+
+    ASTNode *parent = nullptr;
+    SymbolTable *symbolTable = nullptr;
+    SymbolTableEntry *symbolTableEntry = nullptr;
+
+    std::string subtreeString;
 
     explicit ASTNode(ASTNodeType type, std::string value) : type(type), value(std::move(value)) {}
 
@@ -113,7 +120,6 @@ public:
 
     virtual void accept(ASTNodeVisitor &visitor) = 0;
 };
-
 
 class ASTNodeVisitor {
 public:
@@ -155,14 +161,18 @@ public:
     virtual void visit(TypeNode& node) = 0;
     virtual void visit(VisibilityNode& node) = 0;
     virtual void visit(VarDeclNode& node) = 0;
+    virtual void visit(EpsilonNode& node) = 0;
 
     virtual ~ASTNodeVisitor() = default;
 };
 
-
 class EpsilonNode : public ASTNode {
 public:
     EpsilonNode() : ASTNode(Epsilon, "") {}
+
+    void accept(ASTNodeVisitor &visitor) override {
+        visitor.visit(*this);
+    }
 };
 
 class StructDeclNode : public ASTNode {
@@ -507,6 +517,9 @@ public:
     }
 };
 
+/* $end ASTNodes */
+
+/* $begin SymbolTables */
 
 class SymbolTableEntry {
 public:
@@ -514,6 +527,8 @@ public:
     std::string kind;
     std::string type;
     SymbolTable *link;
+
+    std::string visibility;
 
     int offset;
     std::vector<int> dims;
@@ -536,10 +551,13 @@ public:
 
 class VarEntry : public SymbolTableEntry {
 public:
-    VarEntry(std::string name, std::string type, SymbolTable *link) : SymbolTableEntry(std::move(name), "var", std::move(type), link) {}
+    VarEntry(std::string name, std::string type) : SymbolTableEntry(std::move(name), "var", std::move(type),nullptr) {}
 };
 
-
+class ImplEntry : public SymbolTableEntry {
+public:
+    ImplEntry(std::string name, std::string type, SymbolTable *link) : SymbolTableEntry(std::move(name), "impl", std::move(type), link) {}
+};
 
 class SymbolTable {
 public:
@@ -565,6 +583,16 @@ public:
         size++;
     }
 
+    void remove(SymbolTableEntry* entry) {
+        for (int i = 0; i < symList.size(); i++) {
+            if (symList[i] == entry) {
+                symList.erase(symList.begin() + i);
+                size--;
+                break;
+            }
+        }
+    }
+
     SymbolTableEntry* lookup(const std::string& lookup) {
         for (auto entry : symList) {
             if (entry->name == lookup) {
@@ -573,8 +601,18 @@ public:
         }
         return nullptr;
     }
+
+    SymbolTableEntry* lookup(const std::string& lookup, const std::string& kind) {
+        for (auto entry : symList) {
+            if (entry->name == lookup && entry->kind == kind) {
+                return entry;
+            }
+        }
+        return nullptr;
+    }
 };
 
+/* $end SymbolTables */
 
 
 
