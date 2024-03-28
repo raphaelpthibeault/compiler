@@ -3,6 +3,9 @@
 
 #include <string>
 #include <vector>
+#include <algorithm>
+#include <cctype>
+#include <iostream>
 
 class ASTNodeVisitor;
 class SymbolTable;
@@ -103,6 +106,7 @@ public:
     ASTNodeType type;
     std::string value;
     std::vector<ASTNode*> children;
+    std::string semanticType;
 
     ASTNode *parent = nullptr;
     SymbolTable *symbolTable = nullptr;
@@ -593,23 +597,112 @@ public:
         }
     }
 
-    SymbolTableEntry* lookup(const std::string& lookup) {
+    SymbolTableEntry* lookup(const std::string& lookup, const std::string& kind) {
+        std::string copy = lookup;
+        std::transform(copy.begin(), copy.end(), copy.begin(), ::tolower);
         for (auto entry : symList) {
-            if (entry->name == lookup) {
+            std::string entryName = entry->name;
+            std::transform(entryName.begin(), entryName.end(), entryName.begin(), ::tolower);
+            if (entryName == copy && entry->kind == kind) {
                 return entry;
             }
         }
         return nullptr;
     }
 
-    SymbolTableEntry* lookup(const std::string& lookup, const std::string& kind) {
+    std::vector<SymbolTableEntry*> lookupAll(const std::string& lookup, const std::string& kind) {
+        std::vector<SymbolTableEntry*> entries;
+        std::string copy = lookup;
+        std::transform(copy.begin(), copy.end(), copy.begin(), ::tolower);
         for (auto entry : symList) {
-            if (entry->name == lookup && entry->kind == kind) {
-                return entry;
+            std::string entryName = entry->name;
+            std::transform(entryName.begin(), entryName.end(), entryName.begin(), ::tolower);
+            if (entryName == copy && entry->kind == kind) {
+                entries.push_back(entry);
             }
         }
+        return entries;
+    }
+
+   std::vector<std::string> lookupAllNamesOfKind(const std::string& kind) {
+        std::vector<std::string> names;
+        std::string copy = kind;
+        std::transform(copy.begin(), copy.end(), copy.begin(), ::tolower);
+        for (auto entry : symList) {
+            std::string entryKind = entry->kind;
+            std::transform(entryKind.begin(), entryKind.end(), entryKind.begin(), ::tolower);
+            if (entryKind == copy) {
+                names.push_back(entry->name);
+            }
+        }
+        return names;
+    }
+
+    std::vector<SymbolTableEntry*> lookupAllOfKind(const std::string& kind) {
+        std::vector<SymbolTableEntry*> entries;
+        for (auto entry : symList) {
+            if (entry->kind == kind) {
+                entries.push_back(entry);
+            }
+        }
+        return entries;
+    }
+
+    SymbolTableEntry* lookupVarEntryFromFunctionScope(const std::string& lookup, std::ostream &symerrors) {
+        auto *varEntry = this->lookup(lookup, "var");
+        if (varEntry == nullptr) {
+            // first look if it's a param
+            varEntry = this->lookup(lookup, "param");
+            if (varEntry != nullptr) {
+                return varEntry;
+            } else if (this->level == 1) {
+                symerrors << "11.1 [error] undeclared variable in free function " << this->name << "::" << lookup << std::endl;
+            } else {
+                // look in the struct table
+                auto *structTable = this->upperScope->upperScope;
+                varEntry = structTable->lookup(lookup, "var");
+                if (varEntry == nullptr) {
+                    // look in the inherited structs
+                    std::vector<std::string> inheritNames = structTable->lookupAllNamesOfKind("inherit");
+                    if (!inheritNames.empty()) {
+                        auto *globalTable = structTable->upperScope;
+                        for (const auto &inheritName : inheritNames) {
+                            auto *inheritedStructEntry = globalTable->lookup(inheritName, "struct");
+                            if (inheritedStructEntry == nullptr) {
+                                symerrors << "11.5 [error] undeclared inherited struct " << inheritName << std::endl;
+                                return nullptr;
+                            }
+                            auto *inheritedStructTable = inheritedStructEntry->link;
+                            varEntry = inheritedStructTable->lookup(lookup, "var");
+                            if (varEntry != nullptr) {
+                                break;
+                            }
+                        }
+                        if (varEntry == nullptr) {
+                            symerrors << "11.2 [error] undeclared variable (not in inherited structs) " << structTable->name << "::" << this->name << "::" << lookup << std::endl;
+                        } else {
+                            // found it in the inherited struct table
+                            return varEntry;
+                        }
+                    } else {
+                        // it's not that we didn't find it in the inherited structs, it's that there are no inherited structs
+                        symerrors << "11.2 [error] undeclared variable (no inherited structs to look in)" << structTable->name << "::" << this->name << "::" << lookup << std::endl;
+                    }
+
+                } else {
+                    // found it in the struct table
+                    return varEntry;
+                }
+            }
+        } else {
+            // found it in the function scope
+            return varEntry;
+        }
+
         return nullptr;
     }
+
+
 };
 
 /* $end SymbolTables */
