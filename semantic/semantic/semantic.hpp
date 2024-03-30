@@ -95,7 +95,7 @@ inline void variableCheck(ASTNode &node, std::ostream &symerrors) {
             node.semanticType = "errortype";
         }
     } else {
-        int numDims = node.children[1]->children.size();
+        int numDims = (int)node.children[1]->children.size();
         int numDimsInType = 0;
         for (char c : node.semanticType) {
             if (c == '[') {
@@ -180,7 +180,9 @@ inline void inheritanceVariableDeclCheck(ASTNode &node, SymbolTable *structTable
 
 }
 
+
 /* $begin symbol table creation visitors */
+
 /*
  * Visitor to generate symbol tables for the AST intermediate representation.
  * Also checks for semantic errors such as multiply defined variables, functions, etc.
@@ -233,7 +235,6 @@ public:
         }
     }
 
-    // does nothing
     void visit(IdNode& node) override {
         for (auto child : node.children) {
             child->accept(*this);
@@ -918,6 +919,7 @@ public:
 };
 
 /* $end symbol table creation visitors */
+
 
 /* $begin semantic checking visitiors */
 
