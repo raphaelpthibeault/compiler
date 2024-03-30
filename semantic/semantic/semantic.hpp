@@ -4,9 +4,157 @@
 #include <parser.hpp>
 #include <iostream>
 
+/*
+ * Removes the array size from a type or semantic type
+ */
+inline std::string trimVariableType(const std::string& type) {
+    std::string trimmedType;
+    for (char c : type) {
+        if (c == '[') break;
+        trimmedType += c;
+    }
+    return trimmedType;
+}
+
+/*
+ * Checks if two variable types are equal in type and dimension size
+ * Input: two variable types or semantic types
+ */
+inline bool areTwoVarsTypesEqual(std::string &a, std::string &b) {
+    if (trimVariableType(a) != trimVariableType(b)) {
+        return false;
+    }
+
+    // check if both have the same number of dimensions
+    int numDimsA = 0;
+    for (char c : a) {
+        if (c == '[') {
+            numDimsA++;
+        }
+    }
+
+    int numDimsB = 0;
+    for (char c : b) {
+        if (c == '[') {
+            numDimsB++;
+        }
+    }
+
+    return numDimsA == numDimsB;
+}
+
+/*
+ * Semantic checking and type propagation for a variable node (or id node used as a variable)
+ * */
+inline void variableCheck(ASTNode &node, std::ostream &symerrors) {
+    auto *functionScope = node.symbolTable;
+
+    std::string id;
+    if (node.type == 22) {
+        id = node.value;
+    } else {
+        id = node.children[0]->value;
+    }
+
+    // lookup the variable in the symbol table
+    auto *varEntry = functionScope->lookupVarEntryFromFunctionScope(id, symerrors);
+    if (varEntry == nullptr) {
+        node.semanticType = "errortype";
+        return;
+    }
+
+    node.semanticType = varEntry->type;
+
+    if (node.semanticType == "errortype") {
+        return; // this return can be issue, might remove
+    }
+
+    if (node.type == 22) return;
+
+    std::string indiceList;
+    for (auto indice : node.children[1]->children) {
+        indiceList += "[" + indice->value + "]";
+    }
+
+    std::string scope;
+    if (functionScope->level == 1) {
+        scope = functionScope->name;
+    } else {
+        scope = functionScope->upperScope->name + "::" + functionScope->name;
+    }
+
+
+    if (node.children[1]->children.empty()) { // parent shouldn't be an aparamslist so this isn't a functioncall
+        if (node.semanticType.find('[') != std::string::npos && node.parent->type != 7) {
+            if (varEntry->kind == "param") {
+                symerrors << "13.3 [error] array access " << id << indiceList << " on non-array parameter " << id << " with wrong number of dimensions, in " << scope << std::endl;
+            } else {
+                symerrors << "13.1 [error] array access " << id << indiceList << " on non-array variable " << id << " with wrong number of dimensions, in " << scope << std::endl;
+            }
+
+            node.semanticType = "errortype";
+        }
+    } else {
+        int numDims = node.children[1]->children.size();
+        int numDimsInType = 0;
+        for (char c : node.semanticType) {
+            if (c == '[') {
+                numDimsInType++;
+            }
+        }
+        if (numDims != numDimsInType) {
+            if (varEntry->kind == "param") {
+                symerrors << "13.3 [error] use of array parameter with definition " << node.semanticType << " with wrong number of dimensions " << id << indiceList << " in " << scope << std::endl;
+            } else {
+                symerrors << "13.1 [error] use of array variable with definition " << node.semanticType << " with wrong number of dimensions " << id << indiceList << " in " << scope << std::endl;
+            }
+
+            node.semanticType = "errortype";
+        }
+    }
+
+}
+
+/*
+ * Semantic checking of a member function declaration or a free function definition
+ * */
+inline void functionCheck(ASTNode &node, SymbolTableEntry *existingFuncEntry, std::string &funcType, std::string &funcName, std::ostream &symerrors) {
+    // multiply declared
+    if (existingFuncEntry != nullptr) {
+        if (existingFuncEntry->type == funcType) {
+            bool sameFParams = true;
+            for (int i = 0; i < node.symbolTable->symList.size(); i++) {
+                if (node.symbolTable->symList[i]->kind != "param") continue;
+                if (node.symbolTable->symList[i]->type != existingFuncEntry->link->symList[i]->type) {
+                    sameFParams = false;
+                    break;
+                }
+            }
+
+            if (sameFParams) {
+                if (node.symbolTable->upperScope->level == 0) {
+                    symerrors << "8.2 [error] multiply declared free function " << funcName << std::endl;
+                } else {
+                    symerrors << "8.3 [error] multiply declared member function " << funcName << std::endl;
+                }
+                return;
+            }
+        }
+
+        if (node.symbolTable->upperScope->level == 0) {
+            symerrors << "9.1 [warning] overloaded free function " << funcName << std::endl;
+        } else {
+            symerrors << "9.2 [warning] overloaded member function " << funcName << std::endl;
+        }
+    }
+}
+
 
 /* $begin symbol table creation visitors */
-
+/*
+ * Visitor to generate symbol tables for the AST intermediate representation.
+ * Also checks for semantic errors such as multiply defined variables, functions, etc.
+ * */
 class SymbolTableCreationVisitor : public ASTNodeVisitor {
 public:
     int tempVarCounter = 0; // temp var name for ops is t0, t1, t2, ...
@@ -98,11 +246,9 @@ public:
             child->accept(*this);
         }
 
-        // set the visibility of the symbol table entry
         node.children[1]->symbolTableEntry->visibility = visibility;
     }
 
-    // does nothing
     void visit(VisibilityNode &node) override {
         for (auto child : node.children) {
             child->accept(*this);
@@ -126,40 +272,13 @@ public:
         node.symbolTable->insert(node.symbolTableEntry);
         node.symbolTable = funcTable;
 
-        for (auto child : node.children) {
+        for (auto child: node.children) {
             child->parent = &node;
             child->symbolTable = node.symbolTable;
             child->accept(*this);
         }
 
-        // multiply declared
-        if (existingFuncEntry != nullptr) {
-            if (existingFuncEntry->type == funcType) {
-                bool sameFParams = true;
-                for (int i = 0; i < node.symbolTable->symList.size(); i++) {
-                    if (node.symbolTable->symList[i]->kind != "param") continue;
-                    if (node.symbolTable->symList[i]->type != existingFuncEntry->link->symList[i]->type) {
-                        sameFParams = false;
-                        break;
-                    }
-                }
-
-                if (sameFParams) {
-                    if (node.symbolTable->upperScope->level == 0) {
-                        symerrors << "8.2 [error] multiply declared free function " << funcName << std::endl;
-                    } else {
-                        symerrors << "8.3 [error] multiply declared member function " << funcName << std::endl;
-                    }
-                    return;
-                }
-            }
-
-            if (node.symbolTable->upperScope->level == 0) {
-                symerrors << "9.1 [warning] overloaded free function " << funcName << std::endl;
-            } else {
-                symerrors << "9.2 [warning] overloaded member function " << funcName << std::endl;
-            }
-        }
+        functionCheck(node, existingFuncEntry, funcType, funcName, symerrors);
     }
 
     void visit(FParamListNode &node) override {
@@ -201,21 +320,18 @@ public:
         }
     }
 
-    // does nothing
     void visit(TypeNode &node) override {
         for (auto child : node.children) {
             child->accept(*this);
         }
     }
 
-    // does nothing
     void visit(ArraySizeListNode &node) override {
         for (auto child : node.children) {
             child->accept(*this);
         }
     }
 
-    // does nothing
     void visit(IntlitNode &node) override {
         for (auto child : node.children) {
             child->accept(*this);
@@ -280,6 +396,9 @@ public:
 
         std::string funcName = node.children[0]->value;
         std::string funcType = node.children[2]->value;
+
+        auto *existingFuncEntry = node.symbolTable->lookup(funcName, "func");
+
         auto *funcTable = new SymbolTable(funcName, node.symbolTable, node.symbolTable->level + 1);
         node.symbolTableEntry = new FuncEntry(funcName, funcType, funcTable);
         node.symbolTable->insert(node.symbolTableEntry);
@@ -291,6 +410,7 @@ public:
             child->accept(*this);
         }
 
+        functionCheck(node, existingFuncEntry, funcType, funcName, symerrors);
     }
 
     void visit(VarDeclOrStatBlockNode &node) override {
@@ -496,6 +616,10 @@ public:
     }
 };
 
+/*
+ * Visitor to add the implementation functions to the struct symbol table. This is done after the symbol table creation
+ * to allow for forward referencing.
+ * */
 class ImplToStructAddingVisitor : public ASTNodeVisitor {
 public:
     std::ostream &symerrors;
@@ -546,7 +670,6 @@ public:
         }
     }
 
-    // now for all the other nodes, we just propagate
     void visit(ProgNode &node) override {
         for (auto child : node.children) {
             child->accept(*this);
@@ -768,110 +891,9 @@ public:
 
 /* $begin semantic checking visitiors */
 
-inline std::string trimVariableType(const std::string& type) {
-    std::string trimmedType;
-    for (char c : type) {
-        if (c == '[') break;
-        trimmedType += c;
-    }
-    return trimmedType;
-}
-
-inline bool AreTwoVarsEqual(std::string &a, std::string &b) {
-    if (trimVariableType(a) != trimVariableType(b)) {
-        return false;
-    }
-
-    // check if both have the same number of dimensions
-    int numDimsA = 0;
-    for (char c : a) {
-        if (c == '[') {
-            numDimsA++;
-        }
-    }
-
-    int numDimsB = 0;
-    for (char c : b) {
-        if (c == '[') {
-            numDimsB++;
-        }
-    }
-
-    return numDimsA == numDimsB;
-}
-
-inline void variableCheck(ASTNode &node, std::ostream &symerrors) {
-    auto *functionScope = node.symbolTable;
-
-    std::string id;
-    if (node.type == 22) {
-        id = node.value;
-    } else {
-        id = node.children[0]->value;
-    }
-
-    // lookup the variable in the symbol table
-    auto *varEntry = functionScope->lookupVarEntryFromFunctionScope(id, symerrors);
-    if (varEntry == nullptr) {
-        node.semanticType = "errortype";
-        return;
-    }
-
-    node.semanticType = varEntry->type;
-
-    if (node.semanticType == "errortype") {
-        return; // this return can be issue, might remove
-    }
-
-    if (node.type == 22) return;
-
-    std::string indiceList;
-    for (auto indice : node.children[1]->children) {
-        indiceList += "[" + indice->value + "]";
-    }
-
-    std::string scope;
-    if (functionScope->level == 1) {
-        scope = functionScope->name;
-    } else {
-        scope = functionScope->upperScope->name + "::" + functionScope->name;
-    }
-
-
-    if (node.children[1]->children.empty()) { // parent shouldn't be an aparamslist so this isn't a functioncall
-        if (node.semanticType.find('[') != std::string::npos && node.parent->type != 7) {
-            if (varEntry->kind == "param") {
-                symerrors << "13.3 [error] array access " << id << indiceList << " on non-array parameter " << id << " with wrong number of dimensions, in " << scope << std::endl;
-            } else {
-                symerrors << "13.1 [error] array access " << id << indiceList << " on non-array variable " << id << " with wrong number of dimensions, in " << scope << std::endl;
-            }
-
-            node.semanticType = "errortype";
-        }
-    } else {
-        int numDims = node.children[1]->children.size();
-        int numDimsInType = 0;
-        for (char c : node.semanticType) {
-            if (c == '[') {
-                numDimsInType++;
-            }
-        }
-        if (numDims != numDimsInType) {
-            if (varEntry->kind == "param") {
-                symerrors << "13.3 [error] use of array parameter with definition " << node.semanticType << " with wrong number of dimensions " << id << indiceList << " in " << scope << std::endl;
-            } else {
-                symerrors << "13.1 [error] use of array variable with definition " << node.semanticType << " with wrong number of dimensions " << id << indiceList << " in " << scope << std::endl;
-            }
-
-            node.semanticType = "errortype";
-        }
-    }
-
-}
-
-
-
-
+/*
+ * Visitor to check for semantic errors in the AST intermediate representation.
+ * */
 class SemanticCheckingVisitor : public ASTNodeVisitor {
 public:
     std::ostream &symerrors;
@@ -1039,11 +1061,9 @@ public:
 
                 bool error = false;
                 for (int i = 0; i < aparams.size(); i++) {
-                    if (!AreTwoVarsEqual(aparams[i]->semanticType, fparams[i]->type)) {
+                    if (!areTwoVarsTypesEqual(aparams[i]->semanticType, fparams[i]->type)) {
                         error = true;
                     }
-
-
                 }
 
                 if (error) {
@@ -1071,7 +1091,7 @@ public:
                 }
 
                 for (int i = 0; i < aparams.size(); i++) {
-                    if (!AreTwoVarsEqual(aparams[i]->semanticType, fparams[i]->type)) {
+                    if (!areTwoVarsTypesEqual(aparams[i]->semanticType, fparams[i]->type)) {
                         break;
                     }
                 }
@@ -1163,7 +1183,7 @@ public:
 
                     bool error = false;
                     for (int i = 0; i < aparams.size(); i++) {
-                        if (!AreTwoVarsEqual(aparams[i]->semanticType, fparams[i]->type)) {
+                        if (!areTwoVarsTypesEqual(aparams[i]->semanticType, fparams[i]->type)) {
                             error = true;
                         }
                     }
@@ -1190,7 +1210,7 @@ public:
                     }
 
                     for (int i = 0; i < aparams.size(); i++) {
-                        if (!AreTwoVarsEqual(aparams[i]->semanticType, fparams[i]->type)) {
+                        if (!areTwoVarsTypesEqual(aparams[i]->semanticType, fparams[i]->type)) {
                             break;
                         }
                     }
