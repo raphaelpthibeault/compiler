@@ -652,12 +652,12 @@ public:
     }
 
     void visit(ImplFuncListNode &node) override {
-        auto *structTable = node.symbolTable;
+        auto *structTable = node.symbolTable->upperScope;
 
         for (auto child : node.children) {
             auto *funcEntry = structTable->lookup(child->children[0]->value, "func");
             if (funcEntry == nullptr) {
-                symerrors << "6.1 [error] definition provided for undeclared member function " << node.parent->children[0] << "::" << child->children[0]->value << std::endl;
+                symerrors << "6.1 [error] definition provided for undeclared member function " << node.parent->children[0]->value << "::" << child->children[0]->value << std::endl;
             }
 
             child->accept(*this);
@@ -964,7 +964,7 @@ public:
         if (node.children[1]->value != "integer" && node.children[1]->value != "float") {
             auto *structEntry = globalTable->lookup(trimVariableType(node.children[1]->value), "struct");
             if (structEntry == nullptr) {
-                symerrors << "11.5 undeclared struct " << node.children[1]->value << " in " << currentScope->name << std::endl;
+                symerrors << "11.5 [error] undeclared struct " << node.children[1]->value << " in " << currentScope->name << std::endl;
                 return;
             }
         }
