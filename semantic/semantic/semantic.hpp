@@ -389,7 +389,7 @@ public:
                 if (node.symbolTable->level == 1) {
                     symerrors << "8.4 [error] multiply defined local variable in a free function " << node.symbolTable->name << "::" << varName << std::endl;
                 } else {
-                    symerrors << "8.4 [error] multiply defined local variable in a member function " << node.parent->symbolTable->name << "::" << node.symbolTable->name << "::" << varName << std::endl;
+                    symerrors << "8.4 [error] multiply defined local variable in a member function " << node.parent->parent->parent->symbolTable->name << "::" << node.symbolTable->name << "::" << varName << std::endl;
                 }
 
             } else {
@@ -403,8 +403,8 @@ public:
                 symerrors << "8.4 [error] multiply defined identifier in a free function: "
                           << node.symbolTable->name << "::" << varName << " is a param and a variable" << std::endl;
             } else {
-                symerrors << "8.4 [error] multiply defined local variable in a member function "
-                          << node.parent->symbolTable->name << "::" << node.symbolTable->name << "::" << varName << " is a param and a variable " << std::endl;
+                symerrors << "8.4 [error] multiply defined identifier in a member function "
+                          << node.parent->parent->parent->symbolTable->name << "::" << node.symbolTable->name << "::" << varName << " is a param and a variable " << std::endl;
             }
         }
 
