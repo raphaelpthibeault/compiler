@@ -149,6 +149,36 @@ inline void functionCheck(ASTNode &node, SymbolTableEntry *existingFuncEntry, st
     }
 }
 
+/*
+ * Semantic checking of a variable declaration in a struct member list or member function implementation
+ * for shadowing of inherited variables
+ * */
+inline void inheritanceVariableDeclCheck(ASTNode &node, SymbolTable *structTable, SymbolTable *globalTable, std::ostream &symerrors, bool isLocal, std::string &currentScopeName) {
+    // check for shadowing of inherited variables
+    std::vector<std::string> inheritNames = structTable->lookupAllNamesOfKind("inherit");
+    if (!inheritNames.empty()) {
+        for (const auto &inheritName : inheritNames) {
+            // look for the struct in the global table
+            auto *inheritedStructEntry = globalTable->lookup(inheritName, "struct");
+            if (inheritedStructEntry == nullptr) return;
+            auto *inheritedStructTable = inheritedStructEntry->link;
+            auto *matchingInheritedVarEntry = inheritedStructTable->lookup(node.children[0]->value, "var");
+            if (matchingInheritedVarEntry != nullptr) {
+                if (isLocal) {
+                    symerrors << "8.6 [warning] local variable " << structTable->name << "::" << currentScopeName << "::" << node.children[0]->value
+                              << " shadows inherited variable " << inheritedStructTable->name << "::"
+                              << node.children[0]->value << std::endl;
+                } else {
+                    symerrors << "8.5 [warning] member variable " << structTable->name << "::" << node.children[0]->value
+                              << " shadows inherited variable " << inheritedStructTable->name << "::"
+                              << node.children[0]->value << std::endl;
+                }
+
+            }
+        }
+    }
+
+}
 
 /* $begin symbol table creation visitors */
 /*
@@ -969,33 +999,20 @@ public:
             }
         }
 
-       if (node.parent->type == 10 && node.symbolTable->level != 1) {
-           auto *funcTable = node.symbolTable;
-           auto *implTable = funcTable->upperScope;
-           auto *structTable = implTable->upperScope;
+        if (node.parent->type == 10 && node.symbolTable->level != 1) {
+            auto *implTable = currentScope->upperScope;
+            auto *structTable = implTable->upperScope;
+            auto *matchingVarEntry = structTable->lookup(node.children[0]->value, "var");
+            if (matchingVarEntry != nullptr) {
+                symerrors << "8.6 [warning] local variable " << structTable->name << "::" << currentScope->name << "::" << node.children[0]->value
+                          << " shadows member variable " << structTable->name << "::" << node.children[0]->value << std::endl;
+            }
 
-           auto *matchingVarEntry = structTable->lookup(node.children[0]->value, "var");
-           if (matchingVarEntry != nullptr) {
-               symerrors << "8.6 [warning] local variable " << structTable->name << "::" << funcTable->name << "::" << node.children[0]->value
-                         << " shadows member variable " << structTable->name << "::" << node.children[0]->value << std::endl;
-           }
+            inheritanceVariableDeclCheck(node, structTable, globalTable, symerrors, true, currentScope->name);
 
-           // check for shadowing of inherited variables
-           std::vector<std::string> inheritNames = structTable->lookupAllNamesOfKind("inherit");
-           if (!inheritNames.empty()) {
-               for (const auto &inheritName : inheritNames) {
-                   // look for the struct in the global table
-                   auto *inheritedStructEntry = globalTable->lookup(inheritName, "struct");
-                   if (inheritedStructEntry == nullptr) return;
-                   auto *inheritedStructTable = inheritedStructEntry->link;
-                   auto *matchingInheritedVarEntry = inheritedStructTable->lookup(node.children[0]->value, "var");
-                     if (matchingInheritedVarEntry != nullptr) {
-                          symerrors << "8.5 [warning] local variable " << node.children[0]->value
-                                    << " shadows inherited variable " << inheritedStructTable->name << "::" << node.children[0]->value << std::endl;
-                     }
-               }
-           }
-       }
+        } else if (node.parent->type == 26) { // Member
+            inheritanceVariableDeclCheck(node, currentScope, globalTable, symerrors, false, currentScope->name);
+        }
 
         for (auto child : node.children) {
             child->accept(*this);
@@ -1072,8 +1089,8 @@ public:
                         aparamList += aparam->semanticType + " ";
                     }
 
-                    symerrors << "12.2 [error] free function call with wrong type of parameters at " << functionScope->name << "(" << aparamList << ")"
-                              << " call of " << globalTable->name << "::" << funcEntry->name << std::endl;
+                    symerrors << "12.2 [error] free function call with wrong type of parameters in " << functionScope->name << ". Params: ( " << aparamList << ")"
+                              << ", call of " << globalTable->name << "::" << funcEntry->name << std::endl;
                     node.semanticType = "errortype";
                     return;
                 }
@@ -1106,8 +1123,8 @@ public:
             for (auto aparam : aparams) {
                 aparamString += aparam->semanticType + " ";
             }
-            symerrors << "12.2 [error] free function call with wrong type of parameters at " << functionScope->name << "(" << aparamString << ")"
-                      << " call of " << globalTable << "::" << node.children[0]->value << std::endl;
+            symerrors << "12.2 [error] free function call with wrong type of parameters in " << functionScope->name << ". Params: ( " << aparamString << ")"
+                      << " call of " << globalTable->name << "::" << node.children[0]->value << std::endl;
         }
     }
 
