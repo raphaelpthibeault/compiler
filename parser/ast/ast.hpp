@@ -12,7 +12,6 @@ class SymbolTable;
 class SymbolTableEntry;
 class SymbolTableCreationVisitor;
 
-
 class StructEntry;
 class FuncEntry;
 class VarEntry;
@@ -702,6 +701,41 @@ public:
         return nullptr;
     }
 
+    SymbolTableEntry *lookupMemberEntryFromStructTable(const std::string &lookup, std::ostream &symerrors) {
+        auto *memberEntry = this->lookup(lookup, "var");
+        if (memberEntry == nullptr) {
+            // look in inherited struct table
+            std::vector<std::string> inheritNames = this->lookupAllNamesOfKind("inherit");
+            if (!inheritNames.empty()) {
+                auto *globalTable = this->upperScope;
+                for (const auto &inheritName : inheritNames) {
+                    auto *inheritedStructEntry = globalTable->lookup(inheritName, "struct");
+                    if (inheritedStructEntry == nullptr) {
+                        symerrors << "11.5 [error] undeclared inherited struct " << inheritName << std::endl;
+                        return nullptr;
+                    }
+                    auto *inheritedStructTable = inheritedStructEntry->link;
+                    memberEntry = inheritedStructTable->lookup(lookup, "var");
+                    if (memberEntry != nullptr) {
+                        break;
+                    }
+                }
+                if (memberEntry == nullptr) {
+                    symerrors << "11.2 [error] undeclared member (not in inherited structs) " << this->name << "::" << lookup << std::endl;
+                } else {
+                    // found it in the inherited struct table
+                    return memberEntry;
+                }
+            } else {
+                // it's not that we didn't find it in the inherited structs, it's that there are no inherited structs
+                symerrors << "11.2 [error] undeclared data member (no inherited structs to look in)" << this->name << "::" << lookup << std::endl;
+            }
+        } else {
+            return memberEntry;
+        }
+
+        return nullptr;
+    }
 
 };
 

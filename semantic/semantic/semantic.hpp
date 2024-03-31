@@ -83,7 +83,6 @@ inline void variableCheck(ASTNode &node, std::ostream &symerrors) {
         scope = functionScope->upperScope->name + "::" + functionScope->name;
     }
 
-
     if (node.children[1]->children.empty()) { // parent shouldn't be an aparamslist so this isn't a functioncall
         if (node.semanticType.find('[') != std::string::npos && node.parent->type != 7) {
             if (varEntry->kind == "param") {
@@ -144,7 +143,7 @@ inline void functionCheck(ASTNode &node, SymbolTableEntry *existingFuncEntry, st
         if (node.symbolTable->upperScope->level == 0) {
             symerrors << "9.1 [warning] overloaded free function " << funcName << std::endl;
         } else {
-            symerrors << "9.2 [warning] overloaded member function " << funcName << std::endl;
+            symerrors << "9.2 [warning] overloaded member function " << node.symbolTable->upperScope->name  << "::" << funcName << std::endl;
         }
     }
 }
@@ -180,6 +179,75 @@ inline void inheritanceVariableDeclCheck(ASTNode &node, SymbolTable *structTable
 
 }
 
+/*
+ * Semantic check for a member variable access in a dot node.
+ * Assumption: dotParam1 is a valid struct
+ * */
+inline void memberVariableCheck(ASTNode *dotParam1, ASTNode *dotParam2, SymbolTable *functionScope, std::ostream &symerrors) {
+    auto *globalScope = functionScope->upperScope;
+    while (globalScope->level != 0) {
+        globalScope = globalScope->upperScope;
+    }
+
+    auto *structEntry = globalScope->lookup(dotParam1->semanticType, "struct");
+    if (structEntry == nullptr) {
+        dotParam2->semanticType = "PROGRAM_ERROR";
+        return;
+    }
+
+    auto *structTable = structEntry->link;
+
+    std::string id;
+    if (dotParam2->type == 22) {
+        id = dotParam2->value;
+    } else {
+        id = dotParam2->children[0]->value;
+    }
+
+    auto *memberEntry = structTable->lookupMemberEntryFromStructTable(id, symerrors);
+    if (memberEntry == nullptr) {
+        dotParam2->semanticType = "errortype";
+        return;
+    }
+
+    dotParam2->semanticType = memberEntry->type;
+    if (dotParam2->semanticType == "errortype") {
+        return;
+    }
+
+    if (dotParam2->type == 22) return;
+
+    std::string indiceList;
+    for (auto indice : dotParam2->children[1]->children) {
+        indiceList += "[" + indice->value + "]";
+    }
+
+    std::string scope;
+    if (functionScope->level == 1) {
+        scope = functionScope->name;
+    } else {
+        scope = functionScope->upperScope->name + "::" + functionScope->name;
+    }
+
+    if (dotParam2->children[1]->children.empty()) {
+        if (dotParam2->semanticType.find('[') != std::string::npos) {
+            symerrors << "13.2 [error] array access " << id << indiceList << " on non-array member variable " << id << " with wrong number of dimensions, in " << scope << std::endl;
+            dotParam2->semanticType = "errortype";
+        }
+    } else {
+        int numDims = (int)dotParam2->children[1]->children.size();
+        int numDimsInType = 0;
+        for (char c : dotParam2->semanticType) {
+            if (c == '[') {
+                numDimsInType++;
+            }
+        }
+        if (numDims != numDimsInType) {
+            symerrors << "13.2 [error] use of array member variable with definition " << dotParam2->semanticType << " with wrong number of dimensions " << id << indiceList << " in " << scope << std::endl;
+            dotParam2->semanticType = "errortype";
+        }
+    }
+}
 
 /* $begin symbol table creation visitors */
 
@@ -1026,6 +1094,8 @@ public:
             child->accept(*this);
         }
 
+        if (node.parent->type == 12) return; // dot node, perform the check in the dot node visit method
+
         variableCheck(node, symerrors);
     }
 
@@ -1144,7 +1214,7 @@ public:
             return;
         }
 
-        if (dotParam1->type == 22) {
+        if (dotParam1->type == 22 || dotParam1->type == 18) {
             variableCheck(*dotParam1, symerrors);
         }
 
@@ -1170,147 +1240,158 @@ public:
         }
 
         // the result will be the result of the second parameter
-        if (dotParam2->type == 22) {
-            variableCheck(*dotParam2, symerrors);
+        if (dotParam2->type == 22 || dotParam2->type == 18) {
+            // id or variable
+            memberVariableCheck(dotParam1, dotParam2, node.symbolTable, symerrors);
+            if (dotParam2->semanticType == "errortype") {
+                node.semanticType = "errortype";
+                return;
+            }
             node.semanticType = dotParam2->semanticType;
         } else if (dotParam2->type == 17) {
-            // is a member function call
-            std::vector<ASTNode*> aparams = dotParam2->children[1]->children;
+                // is a member function call
+                std::vector<ASTNode*> aparams = dotParam2->children[1]->children;
 
-            auto *functionScope = node.symbolTable;
-            auto *globalTable = functionScope->upperScope;
-            while (globalTable->level != 0) {
-                globalTable = globalTable->upperScope;
-            }
-
-            auto *structEntry = globalTable->lookup(dotParam1->semanticType, "struct");
-            auto *structTable = structEntry->link;
-
-            std::vector<SymbolTableEntry*> matchingFuncEntries = structTable->lookupAll(dotParam2->children[0]->value, "func");
-            // in theory we can have overloaded functions in the inheritee struct that aren't actually overridden per se
-            // check local
-            if (!matchingFuncEntries.empty()) {
-                if (matchingFuncEntries.size() == 1) {
-                    auto *funcEntry = matchingFuncEntries[0];
-                    auto *funcTable = funcEntry->link;
-                    std::vector<SymbolTableEntry*> fparams = funcTable->lookupAllOfKind("param");
-                    if (aparams.size() != fparams.size()) {
-                        symerrors << "12.1 [error] member function call with wrong number of parameters at " << structTable->name << "::" << functionScope->name << std::endl;
-                        node.semanticType = "errortype";
-                        return;
-                    }
-
-                    bool error = false;
-                    for (int i = 0; i < aparams.size(); i++) {
-                        if (!areTwoVarsTypesEqual(aparams[i]->semanticType, fparams[i]->type)) {
-                            error = true;
-                        }
-                    }
-
-                    if (error) {
-                        std::string aparamList;
-                        for (auto aparam : aparams) {
-                            aparamList += aparam->semanticType + " ";
-                        }
-
-                        symerrors << "12.2 [error] member function call with wrong type of parameters at " << functionScope->name << " " << structTable->name << "::" << funcEntry->name << std::endl;
-                        node.semanticType = "errortype";
-                        return;
-                    }
-
-                    node.semanticType = funcEntry->type;
-                    return;
+                auto *functionScope = node.symbolTable;
+                auto *globalTable = functionScope->upperScope;
+                while (globalTable->level != 0) {
+                    globalTable = globalTable->upperScope;
                 }
 
-                for (auto *funcEntry : matchingFuncEntries) {
-                    std::vector<SymbolTableEntry*> fparams = funcEntry->link->lookupAllOfKind("param");
-                    if (aparams.size() != fparams.size()) {
-                        continue;
-                    }
+                auto *structEntry = globalTable->lookup(dotParam1->semanticType, "struct");
+                auto *structTable = structEntry->link;
 
-                    for (int i = 0; i < aparams.size(); i++) {
-                        if (!areTwoVarsTypesEqual(aparams[i]->semanticType, fparams[i]->type)) {
-                            break;
-                        }
-                    }
-
-                    // found a match
-                    node.semanticType = funcEntry->type;
-                    return;
-                }
-            }
-
-            // check in inherited
-            std::vector<std::string> inheritNames = structTable->lookupAllNamesOfKind("inherit");
-            if (inheritNames.empty()) {
-                if (matchingFuncEntries.empty())
-                    symerrors << "11.2 [error] undeclared member function " << dotParam1->semanticType << "::" << dotParam2->children[0]->value << std::endl;
-                else
-                    symerrors << "12.2 [error] member function call with wrong type of parameters at " << structTable->name << "::" << functionScope->name << std::endl;
-            }
-
-            for (const auto &inheritName : inheritNames) {
-                auto *inheritedStructEntry = globalTable->lookup(inheritName, "struct");
-                if (inheritedStructEntry == nullptr) return; // already checked for this
-                auto *inheritedStructTable = inheritedStructEntry->link;
-                matchingFuncEntries = inheritedStructTable->lookupAll(dotParam2->children[0]->value, "func");
+                std::vector<SymbolTableEntry*> matchingFuncEntries = structTable->lookupAll(dotParam2->children[0]->value, "func");
+                // in theory we can have overloaded functions in the inherited struct that aren't actually overridden per se
+                // check local
                 if (!matchingFuncEntries.empty()) {
-                    break;
-                }
+                    if (matchingFuncEntries.size() == 1) {
+                        auto *funcEntry = matchingFuncEntries[0];
+                        auto *funcTable = funcEntry->link;
+                        std::vector<SymbolTableEntry*> fparams = funcTable->lookupAllOfKind("param");
+                        if (aparams.size() != fparams.size()) {
+                            symerrors << "12.1 [error] member function call with wrong number of parameters at " << structTable->name << "::" << functionScope->name << std::endl;
+                            node.semanticType = "errortype";
+                            return;
+                        }
 
-                if (matchingFuncEntries.size() == 1) {
-                    auto *funcEntry = matchingFuncEntries[0];
-                    auto *funcTable = funcEntry->link;
-                    std::vector<SymbolTableEntry*> fparams = funcTable->lookupAllOfKind("param");
-                    if (aparams.size() != fparams.size()) {
-                        symerrors << "12.1 [error] inherited member function call with wrong number of parameters at " << structTable->name << "." << inheritedStructTable->name << "::" << functionScope->name << std::endl;
-                        node.semanticType = "errortype";
+                        bool error = false;
+                        for (int i = 0; i < aparams.size(); i++) {
+                            if (!areTwoVarsTypesEqual(aparams[i]->semanticType, fparams[i]->type)) {
+                                error = true;
+                            }
+                        }
+
+                        if (error) {
+                            std::string aparamList;
+                            for (auto aparam : aparams) {
+                                aparamList += aparam->semanticType + " ";
+                            }
+
+                            symerrors << "12.2 [error] member function call with wrong type of parameters at " << functionScope->name << " " << structTable->name << "::" << funcEntry->name << std::endl;
+                            node.semanticType = "errortype";
+                            return;
+                        }
+
+                        node.semanticType = funcEntry->type;
                         return;
                     }
 
-                    bool error = false;
-                    for (int i = 0; i < aparams.size(); i++) {
-                        if (trimVariableType(aparams[i]->semanticType) != trimVariableType(fparams[i]->type)) {
-                            error = true;
+                    for (auto *funcEntry : matchingFuncEntries) {
+                        std::vector<SymbolTableEntry*> fparams = funcEntry->link->lookupAllOfKind("param");
+                        if (aparams.size() != fparams.size()) {
+                            continue;
                         }
+
+                        for (int i = 0; i < aparams.size(); i++) {
+                            if (!areTwoVarsTypesEqual(aparams[i]->semanticType, fparams[i]->type)) {
+                                break;
+                            }
+                        }
+
+                        // found a match
+                        node.semanticType = funcEntry->type;
+                        return;
+                    }
+                }
+
+                // check in inherited
+                std::vector<std::string> inheritNames = structTable->lookupAllNamesOfKind("inherit");
+                if (inheritNames.empty()) {
+                    if (matchingFuncEntries.empty())
+                        symerrors << "11.3 [error] undeclared member function " << dotParam1->semanticType << "::" << dotParam2->children[0]->value << std::endl;
+                    else
+                        symerrors << "12.2 [error] member function call with wrong type of parameters at " << structTable->name << "::" << dotParam2->children[0]->value << std::endl;
+                    node.semanticType = "errortype";
+                    return;
+                }
+
+                for (const auto &inheritName : inheritNames) {
+                    auto *inheritedStructEntry = globalTable->lookup(inheritName, "struct");
+                    if (inheritedStructEntry == nullptr) return; // already checked for this
+                    auto *inheritedStructTable = inheritedStructEntry->link;
+                    matchingFuncEntries = inheritedStructTable->lookupAll(dotParam2->children[0]->value, "func");
+                    if (!matchingFuncEntries.empty()) {
+                        break;
                     }
 
-                    if (error) {
-                        std::string aparamList;
-                        for (auto aparam : aparams) {
-                            aparamList += aparam->semanticType + " ";
+                    if (matchingFuncEntries.size() == 1) {
+                        auto *funcEntry = matchingFuncEntries[0];
+                        auto *funcTable = funcEntry->link;
+                        std::vector<SymbolTableEntry*> fparams = funcTable->lookupAllOfKind("param");
+                        if (aparams.size() != fparams.size()) {
+                            symerrors << "12.1 [error] inherited member function call with wrong number of parameters at " << structTable->name << "." << inheritedStructTable->name << "::" << dotParam2->children[0]->value << std::endl;
+                            node.semanticType = "errortype";
+                            return;
                         }
 
-                        symerrors << "12.2 [error] inherited member function call with wrong type of parameters at " << structTable->name << "." << inheritedStructTable->name << "::" << functionScope->name << std::endl;
-                        node.semanticType = "errortype";
+                        bool error = false;
+                        for (int i = 0; i < aparams.size(); i++) {
+                            if (trimVariableType(aparams[i]->semanticType) != trimVariableType(fparams[i]->type)) {
+                                error = true;
+                            }
+                        }
+
+                        if (error) {
+                            std::string aparamList;
+                            for (auto aparam : aparams) {
+                                aparamList += aparam->semanticType + " ";
+                            }
+
+                            symerrors << "12.2 [error] inherited member function call with wrong type of parameters at " << structTable->name << "." << inheritedStructTable->name << "::" <<  dotParam2->children[0]->value << std::endl;
+                            node.semanticType = "errortype";
+                            return;
+                        }
+
+                        node.semanticType = funcEntry->type;
                         return;
                     }
 
-                    node.semanticType = funcEntry->type;
-                    return;
-                }
-
-                for (auto *funcEntry : matchingFuncEntries) {
-                    std::vector<SymbolTableEntry*> fparams = funcEntry->link->lookupAllOfKind("param");
-                    if (aparams.size() != fparams.size()) {
-                        continue;
-                    }
-
-                    for (int i = 0; i < aparams.size(); i++) {
-                        if (trimVariableType(aparams[i]->semanticType) != trimVariableType(fparams[i]->type)) {
-                            break;
+                    for (auto *funcEntry : matchingFuncEntries) {
+                        std::vector<SymbolTableEntry*> fparams = funcEntry->link->lookupAllOfKind("param");
+                        if (aparams.size() != fparams.size()) {
+                            continue;
                         }
+
+                        for (int i = 0; i < aparams.size(); i++) {
+                            if (trimVariableType(aparams[i]->semanticType) != trimVariableType(fparams[i]->type)) {
+                                break;
+                            }
+                        }
+
+                        // found a match
+                        node.semanticType = funcEntry->type;
+                        return;
                     }
-
-                    // found a match
-                    node.semanticType = funcEntry->type;
-                    return;
                 }
-            }
 
-            // exhausted all inherited structs
-            symerrors << "12.2 [error] member function call with wrong type of parameters at " << structTable->name << "::" << functionScope->name << std::endl;
-            node.semanticType = "errortype";
+                if (matchingFuncEntries.empty()) {
+                    symerrors << "11.3 [error] undeclared member function " << dotParam1->semanticType << "::" << dotParam2->children[0]->value << std::endl;
+                } else {
+                    symerrors << "12.2 [error] member function call with wrong type of parameters at " << structTable->name << "::" << dotParam2->children[0]->value << std::endl;
+                }
+
+                node.semanticType = "errortype";
         } else {
             symerrors << "15.1 [error] . operator right hand side is not a member function call or member variable access at " << dotParam1->value << "." << dotParam2->value << std::endl;
             node.semanticType = "errortype";
@@ -1380,10 +1461,12 @@ public:
         auto *right = node.children[1];
 
         if (left->semanticType == "errortype" || right->semanticType == "errortype") {
+            symerrors << "10.1 [error] type mismatch in addition/subtraction operation " << left->semanticType << " and " << right->semanticType << std::endl;
             node.semanticType = "errortype";
             return;
         } else if (left->semanticType != right->semanticType) {
             symerrors << "10.1 [error] type mismatch in addition/subtraction operation " << left->semanticType << " and " << right->semanticType << std::endl;
+            node.semanticType = "errortype";
         } else {
             node.semanticType = left->semanticType;
         }
@@ -1397,13 +1480,36 @@ public:
         auto *left = node.children[0];
         auto *right = node.children[1];
         if (left->semanticType == "errortype" || right->semanticType == "errortype") {
+            symerrors << "10.1 [error] type mismatch in multiplication/division operation " << left->semanticType << " and " << right->semanticType << std::endl;
             node.semanticType = "errortype";
             return;
         } else if (left->semanticType != right->semanticType) {
             symerrors << "10.1 [error] type mismatch in multiplication/division operation " << left->semanticType << " and " << right->semanticType << std::endl;
+            node.semanticType = "errortype";
         } else {
             node.semanticType = left->semanticType;
         }
+    }
+
+    void visit(RelExprNode &node) override {
+        for (auto child : node.children) {
+            child->accept(*this);
+        }
+
+        auto *left = node.children[0];
+        auto *right = node.children[2];
+
+        if (left->semanticType == "errortype" || right->semanticType == "errortype") {
+            symerrors << "10.1 [error] type mismatch in relational operation " << left->semanticType << " and " << right->semanticType << std::endl;
+            node.semanticType = "errortype";
+            return;
+        } else if (left->semanticType != right->semanticType) {
+            symerrors << "10.1 [error] type mismatch in relational operation " << left->semanticType << " and " << right->semanticType << std::endl;
+            node.semanticType = "errortype";
+        } else {
+            node.semanticType = "integer";
+        }
+
     }
 
     void visit(AssignOpNode &node) override {
@@ -1514,25 +1620,6 @@ public:
         for (auto child : node.children) {
             child->accept(*this);
         }
-    }
-
-    void visit(RelExprNode &node) override {
-        for (auto child : node.children) {
-            child->accept(*this);
-        }
-
-        auto *left = node.children[0];
-        auto *right = node.children[2];
-
-        if (left->semanticType == "errortype" || right->semanticType == "errortype") {
-            node.semanticType = "errortype";
-            return;
-        } else if (left->semanticType != right->semanticType) {
-            symerrors << "10.1 [error] type mismatch in relational operation " << left->semanticType << " and " << right->semanticType << std::endl;
-        } else {
-            node.semanticType = "boolean";
-        }
-
     }
 
     void visit(FloatlitNode &node) override {
