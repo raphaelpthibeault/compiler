@@ -1199,9 +1199,11 @@ public:
                 }
 
                 bool error = false;
+                std::vector<std::pair<std::string, std::string>> incorrectParamPairs;
                 for (int i = 0; i < aparams.size(); i++) {
                     if (!areTwoVarsTypesEqual(aparams[i]->semanticType, fparams[i]->type)) {
                         error = true;
+                        incorrectParamPairs.emplace_back(aparams[i]->semanticType, fparams[i]->type);
                     }
                 }
 
@@ -1209,6 +1211,14 @@ public:
                     std::string aparamString;
                     for (auto aparam : aparams) {
                         aparamString += aparam->semanticType + " ";
+                    }
+
+                    for (const auto& pair : incorrectParamPairs) {
+                        if (getNumDims(pair.first) != getNumDims(pair.second)) {
+                            symerrors << "13.3 [error] array parameter (in free function call) using wrong number of dimensions in " << functionScope->name << ". Expected: " << pair.second << ", got: " << pair.first
+                                      << ", call of " << globalTable->name << "::" << funcEntry->name << std::endl;
+                            return;
+                        }
                     }
 
                     symerrors << "12.2 [error] There are overloaded free functions with name " << node.children[0]->value <<
