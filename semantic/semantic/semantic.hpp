@@ -17,6 +17,19 @@ inline std::string trimVariableType(const std::string& type) {
 }
 
 /*
+ * Returns the number of dimensions of in a type
+ */
+inline int getNumDims(const std::string &type) {
+    int numDims = 0;
+    for (char c : type) {
+        if (c == '[') {
+            numDims++;
+        }
+    }
+    return numDims;
+}
+
+/*
  * Checks if two variable types are equal in type and dimension size
  * Input: two variable types or semantic types
  */
@@ -26,19 +39,8 @@ inline bool areTwoVarsTypesEqual(std::string &a, std::string &b) {
     }
 
     // check if both have the same number of dimensions
-    int numDimsA = 0;
-    for (char c : a) {
-        if (c == '[') {
-            numDimsA++;
-        }
-    }
-
-    int numDimsB = 0;
-    for (char c : b) {
-        if (c == '[') {
-            numDimsB++;
-        }
-    }
+    int numDimsA = getNumDims(a);
+    int numDimsB = getNumDims(b);
 
     return numDimsA == numDimsB;
 }
@@ -1143,15 +1145,23 @@ public:
                 auto *funcTable = funcEntry->link;
                 std::vector<SymbolTableEntry*> fparams = funcTable->lookupAllOfKind("param");
                 if (aparams.size() != fparams.size()) {
-                    symerrors << "12.1 [error] free function call with wrong number of parameters at " << functionScope->name << std::endl;
+                    std::string aparamList;
+                    for (auto aparam : aparams) {
+                        aparamList += aparam->semanticType + " ";
+                    }
+
+                    symerrors << "12.1 [error] free function call with wrong number of parameters in " << functionScope->name << ". Params: ( " << aparamList << ")"
+                              << ", call of " << globalTable->name << "::" << funcEntry->name << std::endl;
                     node.semanticType = "errortype";
                     return;
                 }
 
                 bool error = false;
+                std::vector<std::pair<std::string, std::string>> incorrectParamPairs;
                 for (int i = 0; i < aparams.size(); i++) {
                     if (!areTwoVarsTypesEqual(aparams[i]->semanticType, fparams[i]->type)) {
                         error = true;
+                        incorrectParamPairs.emplace_back(aparams[i]->semanticType, fparams[i]->type);
                     }
                 }
 
@@ -1159,6 +1169,15 @@ public:
                     std::string aparamList;
                     for (auto aparam : aparams) {
                         aparamList += aparam->semanticType + " ";
+                    }
+
+                    for (const auto& pair : incorrectParamPairs) {
+                        if (getNumDims(pair.first) != getNumDims(pair.second)) {
+                            symerrors << "13.3 [error] array parameter (in free function call) using wrong number of dimensions in " << functionScope->name << ". Expected: " << pair.second << ", got: " << pair.first
+                                      << ", call of " << globalTable->name << "::" << funcEntry->name << std::endl;
+                            node.semanticType = "errortype";
+                            return;
+                        }
                     }
 
                     symerrors << "12.2 [error] free function call with wrong type of parameters in " << functionScope->name << ". Params: ( " << aparamList << ")"
@@ -1179,10 +1198,23 @@ public:
                     continue;
                 }
 
+                bool error = false;
                 for (int i = 0; i < aparams.size(); i++) {
                     if (!areTwoVarsTypesEqual(aparams[i]->semanticType, fparams[i]->type)) {
-                        break;
+                        error = true;
                     }
+                }
+
+                if (error) {
+                    std::string aparamString;
+                    for (auto aparam : aparams) {
+                        aparamString += aparam->semanticType + " ";
+                    }
+
+                    symerrors << "12.2 [error] There are overloaded free functions with name " << node.children[0]->value <<
+                              ", there exists a matching function with number of parameters but wrong types of parameters. "
+                              "Params: ( " << aparamString << ") call of " << globalTable->name << "::" << node.children[0]->value << std::endl;
+                    return;
                 }
 
                 node.semanticType = funcEntry->type;
@@ -1195,8 +1227,9 @@ public:
             for (auto aparam : aparams) {
                 aparamString += aparam->semanticType + " ";
             }
-            symerrors << "12.2 [error] free function call with wrong type of parameters in " << functionScope->name << ". Params: ( " << aparamString << ")"
-                      << " call of " << globalTable->name << "::" << node.children[0]->value << std::endl;
+            symerrors << "(12.1 OR 12.2) [error] There are overloaded free functions with name " << node.children[0]->value <<
+                         ", there exists no matching function with the right number and types of parameters "
+                         "Params: ( " << aparamString << ") call of " << globalTable->name << "::" << node.children[0]->value << std::endl;
         }
     }
 
@@ -1251,6 +1284,10 @@ public:
         } else if (dotParam2->type == 17) {
                 // is a member function call
                 std::vector<ASTNode*> aparams = dotParam2->children[1]->children;
+                std::string aparamList;
+                for (auto aparam : aparams) {
+                    aparamList += aparam->semanticType + " ";
+                }
 
                 auto *functionScope = node.symbolTable;
                 auto *globalTable = functionScope->upperScope;
@@ -1270,25 +1307,37 @@ public:
                         auto *funcTable = funcEntry->link;
                         std::vector<SymbolTableEntry*> fparams = funcTable->lookupAllOfKind("param");
                         if (aparams.size() != fparams.size()) {
-                            symerrors << "12.1 [error] member function call with wrong number of parameters at " << structTable->name << "::" << functionScope->name << std::endl;
+                            symerrors << "12.1 [error] member function call with wrong number of parameters at " << functionScope->name << " " << structTable->name << "::" << funcEntry->name
+                                        << ". Params: ( " << aparamList << ")" << std::endl;
                             node.semanticType = "errortype";
                             return;
                         }
 
                         bool error = false;
+                        std::vector<std::pair<std::string, std::string>> incorrectParamPairs;
                         for (int i = 0; i < aparams.size(); i++) {
                             if (!areTwoVarsTypesEqual(aparams[i]->semanticType, fparams[i]->type)) {
                                 error = true;
+                                incorrectParamPairs.emplace_back(aparams[i]->semanticType, fparams[i]->type);
                             }
                         }
 
                         if (error) {
-                            std::string aparamList;
                             for (auto aparam : aparams) {
                                 aparamList += aparam->semanticType + " ";
                             }
 
-                            symerrors << "12.2 [error] member function call with wrong type of parameters at " << functionScope->name << " " << structTable->name << "::" << funcEntry->name << std::endl;
+                            for (const auto& pair : incorrectParamPairs) {
+                                if (getNumDims(pair.first) != getNumDims(pair.second)) {
+                                    symerrors << "13.3 [error] array parameter (in member function call) using wrong number of dimensions at " << functionScope->name << " " << structTable->name << "::" << funcEntry->name
+                                              << ". Expected: " << pair.second << ", got: " << pair.first << std::endl;
+                                    node.semanticType = "errortype";
+                                    return;
+                                }
+                            }
+
+                            symerrors << "12.2 [error] member function call with wrong type of parameters at " << functionScope->name << " " << structTable->name << "::" << funcEntry->name
+                                         << ". Params: ( " << aparamList << ")" << std::endl;
                             node.semanticType = "errortype";
                             return;
                         }
@@ -1320,8 +1369,10 @@ public:
                 if (inheritNames.empty()) {
                     if (matchingFuncEntries.empty())
                         symerrors << "11.3 [error] undeclared member function " << dotParam1->semanticType << "::" << dotParam2->children[0]->value << std::endl;
-                    else
-                        symerrors << "12.2 [error] member function call with wrong type of parameters at " << structTable->name << "::" << dotParam2->children[0]->value << std::endl;
+                    else {
+                        symerrors << "12.2 [error] member function call with wrong type of parameters at " << structTable->name << "::" << dotParam2->children[0]->value
+                                  << ". Params: ( " << aparamList << ")" << std::endl;
+                    }
                     node.semanticType = "errortype";
                     return;
                 }
@@ -1340,7 +1391,8 @@ public:
                         auto *funcTable = funcEntry->link;
                         std::vector<SymbolTableEntry*> fparams = funcTable->lookupAllOfKind("param");
                         if (aparams.size() != fparams.size()) {
-                            symerrors << "12.1 [error] inherited member function call with wrong number of parameters at " << structTable->name << "." << inheritedStructTable->name << "::" << dotParam2->children[0]->value << std::endl;
+                            symerrors << "12.1 [error] inherited member function call with wrong number of parameters at " << structTable->name << "." << inheritedStructTable->name << "::" << dotParam2->children[0]->value
+                                        << ". Params: ( " << aparamList << ")" << std::endl;
                             node.semanticType = "errortype";
                             return;
                         }
@@ -1353,12 +1405,8 @@ public:
                         }
 
                         if (error) {
-                            std::string aparamList;
-                            for (auto aparam : aparams) {
-                                aparamList += aparam->semanticType + " ";
-                            }
-
-                            symerrors << "12.2 [error] inherited member function call with wrong type of parameters at " << structTable->name << "." << inheritedStructTable->name << "::" <<  dotParam2->children[0]->value << std::endl;
+                            symerrors << "12.2 [error] inherited member function call with wrong type of parameters at " << structTable->name << "." << inheritedStructTable->name << "::" <<  dotParam2->children[0]->value
+                                    << ". Params: ( " << aparamList << ")" << std::endl;
                             node.semanticType = "errortype";
                             return;
                         }
@@ -1388,7 +1436,10 @@ public:
                 if (matchingFuncEntries.empty()) {
                     symerrors << "11.3 [error] undeclared member function " << dotParam1->semanticType << "::" << dotParam2->children[0]->value << std::endl;
                 } else {
-                    symerrors << "12.2 [error] member function call with wrong type of parameters at " << structTable->name << "::" << dotParam2->children[0]->value << std::endl;
+
+                    symerrors << "12.2 [error] member function call with wrong type of parameters at " << structTable->name << "::" << dotParam2->children[0]->value
+                              << ". Params: ( " << aparamList << ")" << std::endl;
+
                 }
 
                 node.semanticType = "errortype";
