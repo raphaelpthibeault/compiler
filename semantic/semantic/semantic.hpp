@@ -3,11 +3,63 @@
 
 #include <parser.hpp>
 #include <iostream>
+#include <map>
+#include <set>
+
+
+/* inheritance node state */
+enum NodeState {NOT_VISITED, VISITING, VISITED};
+
+void semanticAnalysis(ASTNode &root, std::ostream &symfile, std::ostream &symerrors);
+void detectCyclicStructDependency(const std::map<std::string, std::vector<std::string>> &graph, std::ostream &symerrors, bool isDependencyGraph);
+
+
+/*
+ * function to check for cycles
+ * */
+static bool hasCycle(const std::string &nodeName, const std::map<std::string, std::vector<std::string>> &graph,
+                     std::map<std::string, NodeState> &state, std::vector<std::string> &currPath,
+                     std::set<std::string> &visited, std::ostream &symerrors, bool isDependencyGraph) {
+    if (state[nodeName] == VISITING) {
+        if (isDependencyGraph) {
+            symerrors << "14.1 [error] cyclic dependency involving: ";
+        } else {
+            symerrors << "14.1 [error] cyclic inheritance involving: ";
+        }
+        for (const auto &node : currPath) {
+            symerrors << node << " -> ";
+        }
+        symerrors << nodeName << std::endl;
+        return true;
+    }
+
+    if (visited.find(nodeName) != visited.end()) {
+        return false;
+    }
+
+    state[nodeName] = VISITING;
+    currPath.push_back(nodeName);
+
+    bool isCycle = false;
+    for (const auto &child : graph.at(nodeName)) {
+        if (hasCycle(child, graph, state, currPath, visited, symerrors, isDependencyGraph)) {
+            isCycle = true;
+            break;
+        }
+    }
+
+    state[nodeName] = VISITED;
+    visited.insert(nodeName);
+    currPath.pop_back();
+
+    return isCycle;
+}
+
 
 /*
  * Removes the array size from a type or semantic type
  */
-inline std::string trimVariableType(const std::string& type) {
+static inline std::string trimVariableType(const std::string& type) {
     std::string trimmedType;
     for (char c : type) {
         if (c == '[') break;
@@ -19,7 +71,7 @@ inline std::string trimVariableType(const std::string& type) {
 /*
  * Returns the number of dimensions of in a type
  */
-inline int getNumDims(const std::string &type) {
+static inline int getNumDims(const std::string &type) {
     int numDims = 0;
     for (char c : type) {
         if (c == '[') {
@@ -33,12 +85,11 @@ inline int getNumDims(const std::string &type) {
  * Checks if two variable types are equal in type and dimension size
  * Input: two variable types or semantic types
  */
-inline bool areTwoVarsTypesEqual(std::string &a, std::string &b) {
+static inline bool areTwoVarsTypesEqual(std::string &a, std::string &b) {
     if (trimVariableType(a) != trimVariableType(b)) {
         return false;
     }
 
-    // check if both have the same number of dimensions
     int numDimsA = getNumDims(a);
     int numDimsB = getNumDims(b);
 
@@ -48,7 +99,7 @@ inline bool areTwoVarsTypesEqual(std::string &a, std::string &b) {
 /*
  * Semantic checking and type propagation for a variable node (or id node used as a variable)
  * */
-inline void variableCheck(ASTNode &node, std::ostream &symerrors) {
+static void variableCheck(ASTNode &node, std::ostream &symerrors) {
     auto *functionScope = node.symbolTable;
 
     std::string id;
@@ -119,7 +170,7 @@ inline void variableCheck(ASTNode &node, std::ostream &symerrors) {
 /*
  * Semantic checking of a member function declaration or a free function definition
  * */
-inline void functionCheck(ASTNode &node, SymbolTableEntry *existingFuncEntry, std::string &funcType, std::string &funcName, std::ostream &symerrors) {
+static void functionCheck(ASTNode &node, SymbolTableEntry *existingFuncEntry, std::string &funcType, std::string &funcName, std::ostream &symerrors) {
     // multiply declared
     if (existingFuncEntry != nullptr) {
         if (existingFuncEntry->type == funcType) {
@@ -154,7 +205,7 @@ inline void functionCheck(ASTNode &node, SymbolTableEntry *existingFuncEntry, st
  * Semantic checking of a variable declaration in a struct member list or member function implementation
  * for shadowing of inherited variables
  * */
-inline void inheritanceVariableDeclCheck(ASTNode &node, SymbolTable *structTable, SymbolTable *globalTable, std::ostream &symerrors, bool isLocal, std::string &currentScopeName) {
+static void inheritanceVariableDeclCheck(ASTNode &node, SymbolTable *structTable, SymbolTable *globalTable, std::ostream &symerrors, bool isLocal, std::string &currentScopeName) {
     // check for shadowing of inherited variables
     std::vector<std::string> inheritNames = structTable->lookupAllNamesOfKind("inherit");
     if (!inheritNames.empty()) {
@@ -185,7 +236,7 @@ inline void inheritanceVariableDeclCheck(ASTNode &node, SymbolTable *structTable
  * Semantic check for a member variable access in a dot node.
  * Assumption: dotParam1 is a valid struct
  * */
-inline void memberVariableCheck(ASTNode *dotParam1, ASTNode *dotParam2, SymbolTable *functionScope, std::ostream &symerrors) {
+static void memberVariableCheck(ASTNode *dotParam1, ASTNode *dotParam2, SymbolTable *functionScope, std::ostream &symerrors) {
     auto *globalScope = functionScope->upperScope;
     while (globalScope->level != 0) {
         globalScope = globalScope->upperScope;
@@ -720,10 +771,13 @@ public:
 /*
  * Visitor to add the implementation functions to the struct symbol table. This is done after the symbol table creation
  * to allow for forward referencing.
+ * Also builds the inheritance graph for the struct symbol tables and the dependency graphs for the struct members.
  * */
 class ImplToStructAddingVisitor : public ASTNodeVisitor {
 public:
     std::ostream &symerrors;
+    std::map<std::string, std::vector<std::string>> inheritanceGraph;
+    std::map<std::string, std::vector<std::string>> dependencyGraph;
 
     explicit ImplToStructAddingVisitor(std::ostream &symerrors) : symerrors(symerrors) {}
 
@@ -765,6 +819,34 @@ public:
         }
     }
 
+    void visit(StructDeclNode &node) override {
+        for (auto child : node.children) {
+            child->accept(*this);
+        }
+
+        // for circular inheritance check
+        std::string structName = node.children[0]->value;
+        std::vector<std::string> inheritNames = node.symbolTable->lookupAllNamesOfKind("inherit");
+        inheritanceGraph[structName] = inheritNames;
+
+        // for circular dependency check
+        std::vector<std::string> dependencies;
+
+        std::vector<SymbolTableEntry*> varMembers = node.symbolTable->lookupAllOfKind("var");
+        for (auto var : varMembers) {
+            if (var->type == "errortype" || var->type == "integer" || var->type == "float") continue;
+            dependencies.emplace_back(trimVariableType(var->type));
+        }
+
+        dependencyGraph[structName] = dependencies;
+    }
+
+    void visit(MemberNode &node) override {
+        for (auto child : node.children) {
+            child->accept(*this);
+        }
+    }
+
     void visit(MemberListNode &node) override {
         for (auto child : node.children) {
             child->accept(*this);
@@ -777,12 +859,6 @@ public:
         }
     }
 
-    void visit(StructDeclNode &node) override {
-        for (auto child : node.children) {
-            child->accept(*this);
-        }
-    }
-
     void visit(IdNode &node) override {
         for (auto child : node.children) {
             child->accept(*this);
@@ -790,12 +866,6 @@ public:
     }
 
     void visit(InheritListNode &node) override {
-        for (auto child : node.children) {
-            child->accept(*this);
-        }
-    }
-
-    void visit(MemberNode &node) override {
         for (auto child : node.children) {
             child->accept(*this);
         }
