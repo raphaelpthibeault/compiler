@@ -52,7 +52,7 @@ static void printSymbolTable(const SymbolTable* table, int indent = 0, std::ostr
 /*
  * function to start the cycle checking
  * */
-void detectCyclicStructDependency(const std::map<std::string, std::vector<std::string>> &graph, std::ostream &symerrors, bool isDependencyGraph) {
+bool detectCyclicStructDependency(const std::map<std::string, std::vector<std::string>> &graph, std::ostream &symerrors, bool isDependencyGraph) {
     std::map<std::string, NodeState> state;
     std::set<std::string> visited;
     std::vector<std::string> currPath;
@@ -60,17 +60,18 @@ void detectCyclicStructDependency(const std::map<std::string, std::vector<std::s
     for (const auto &node : graph) {
         if (state[node.first] == NOT_VISITED) {
             if (hasCycle(node.first, graph, state, currPath, visited, symerrors, isDependencyGraph)) {
-                break;
+                return true;
             }
         }
     }
+
+    return false;
 }
 
 /*
  * function to perform semantic analysis on the AST intermediate representation
  * */
-void semanticAnalysis(ASTNode &root, std::ostream &symfile, std::ostream &symerrors) {
-    std::cout << "Starting semantic analysis." << std::endl;
+bool semanticAnalysis(ASTNode &root, std::ostream &symfile, std::ostream &symerrors) {
     SymbolTableCreationVisitor visitor(symerrors);
     root.accept(visitor);
 
@@ -80,12 +81,12 @@ void semanticAnalysis(ASTNode &root, std::ostream &symfile, std::ostream &symerr
     SemanticCheckingVisitor semanticChecker(symerrors);
     root.accept(semanticChecker);
 
-    detectCyclicStructDependency(visitor2.inheritanceGraph, symerrors, false);
-    detectCyclicStructDependency(visitor2.dependencyGraph, symerrors, true);
-
-    std::cout << "Done semantic analysis." << std::endl;
+    bool hasCyclicInher = detectCyclicStructDependency(visitor2.inheritanceGraph, symerrors, false);
+    bool hasCyclicDep = detectCyclicStructDependency(visitor2.dependencyGraph, symerrors, true);
 
     printSymbolTable(root.symbolTable, 0, symfile);
+
+    return visitor.accept && visitor2.accept && semanticChecker.accept && !hasCyclicInher && !hasCyclicDep;
 }
 
 

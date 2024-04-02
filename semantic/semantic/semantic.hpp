@@ -10,9 +10,8 @@
 /* inheritance node state */
 enum NodeState {NOT_VISITED, VISITING, VISITED};
 
-void semanticAnalysis(ASTNode &root, std::ostream &symfile, std::ostream &symerrors);
-void detectCyclicStructDependency(const std::map<std::string, std::vector<std::string>> &graph, std::ostream &symerrors, bool isDependencyGraph);
-
+bool semanticAnalysis(ASTNode &root, std::ostream &symfile, std::ostream &symerrors);
+bool detectCyclicStructDependency(const std::map<std::string, std::vector<std::string>> &graph, std::ostream &symerrors, bool isDependencyGraph);
 
 /*
  * function to check for cycles
@@ -54,7 +53,6 @@ static bool hasCycle(const std::string &nodeName, const std::map<std::string, st
 
     return isCycle;
 }
-
 
 /*
  * Removes the array size from a type or semantic type
@@ -99,7 +97,7 @@ static inline bool areTwoVarsTypesEqual(std::string &a, std::string &b) {
 /*
  * Semantic checking and type propagation for a variable node (or id node used as a variable)
  * */
-static void variableCheck(ASTNode &node, std::ostream &symerrors) {
+static void variableCheck(ASTNode &node, std::ostream &symerrors, bool &accept) {
     auto *functionScope = node.symbolTable;
 
     std::string id;
@@ -113,13 +111,15 @@ static void variableCheck(ASTNode &node, std::ostream &symerrors) {
     auto *varEntry = functionScope->lookupVarEntryFromFunctionScope(id, symerrors);
     if (varEntry == nullptr) {
         node.semanticType = "errortype";
+        accept = false;
         return;
     }
 
     node.semanticType = varEntry->type;
 
     if (node.semanticType == "errortype") {
-        return; // this return can be issue, might remove
+        accept = false;
+        return;
     }
 
     if (node.type == 22) return;
@@ -145,6 +145,7 @@ static void variableCheck(ASTNode &node, std::ostream &symerrors) {
             }
 
             node.semanticType = "errortype";
+            accept = false;
         }
     } else {
         int numDims = (int)node.children[1]->children.size();
@@ -162,6 +163,7 @@ static void variableCheck(ASTNode &node, std::ostream &symerrors) {
             }
 
             node.semanticType = "errortype";
+            accept = false;
         }
     }
 
@@ -170,7 +172,7 @@ static void variableCheck(ASTNode &node, std::ostream &symerrors) {
 /*
  * Semantic checking of a member function declaration or a free function definition
  * */
-static void functionCheck(ASTNode &node, SymbolTableEntry *existingFuncEntry, std::string &funcType, std::string &funcName, std::ostream &symerrors) {
+static void functionCheck(ASTNode &node, SymbolTableEntry *existingFuncEntry, std::string &funcType, std::string &funcName, std::ostream &symerrors, bool &accept) {
     // multiply declared
     if (existingFuncEntry != nullptr) {
         if (existingFuncEntry->type == funcType) {
@@ -189,6 +191,9 @@ static void functionCheck(ASTNode &node, SymbolTableEntry *existingFuncEntry, st
                 } else {
                     symerrors << "8.3 [error] multiply declared member function " << funcName << std::endl;
                 }
+
+                node.semanticType = "errortype";
+                accept = false;
                 return;
             }
         }
@@ -236,7 +241,7 @@ static void inheritanceVariableDeclCheck(ASTNode &node, SymbolTable *structTable
  * Semantic check for a member variable access in a dot node.
  * Assumption: dotParam1 is a valid struct
  * */
-static void memberVariableCheck(ASTNode *dotParam1, ASTNode *dotParam2, SymbolTable *functionScope, std::ostream &symerrors) {
+static bool memberVariableCheck(ASTNode *dotParam1, ASTNode *dotParam2, SymbolTable *functionScope, std::ostream &symerrors) {
     auto *globalScope = functionScope->upperScope;
     while (globalScope->level != 0) {
         globalScope = globalScope->upperScope;
@@ -245,7 +250,7 @@ static void memberVariableCheck(ASTNode *dotParam1, ASTNode *dotParam2, SymbolTa
     auto *structEntry = globalScope->lookup(dotParam1->semanticType, "struct");
     if (structEntry == nullptr) {
         dotParam2->semanticType = "PROGRAM_ERROR";
-        return;
+        return false;
     }
 
     auto *structTable = structEntry->link;
@@ -260,15 +265,15 @@ static void memberVariableCheck(ASTNode *dotParam1, ASTNode *dotParam2, SymbolTa
     auto *memberEntry = structTable->lookupMemberEntryFromStructTable(id, symerrors);
     if (memberEntry == nullptr) {
         dotParam2->semanticType = "errortype";
-        return;
+        return false;
     }
 
     dotParam2->semanticType = memberEntry->type;
     if (dotParam2->semanticType == "errortype") {
-        return;
+        return false;
     }
 
-    if (dotParam2->type == 22) return;
+    if (dotParam2->type == 22) return true;
 
     std::string indiceList;
     for (auto indice : dotParam2->children[1]->children) {
@@ -282,10 +287,13 @@ static void memberVariableCheck(ASTNode *dotParam1, ASTNode *dotParam2, SymbolTa
         scope = functionScope->upperScope->name + "::" + functionScope->name;
     }
 
+    bool accepted = true;
+
     if (dotParam2->children[1]->children.empty()) {
         if (dotParam2->semanticType.find('[') != std::string::npos) {
             symerrors << "13.2 [error] array access " << id << indiceList << " on non-array member variable " << id << " with wrong number of dimensions, in " << scope << std::endl;
             dotParam2->semanticType = "errortype";
+            accepted = false;
         }
     } else {
         int numDims = (int)dotParam2->children[1]->children.size();
@@ -298,8 +306,11 @@ static void memberVariableCheck(ASTNode *dotParam1, ASTNode *dotParam2, SymbolTa
         if (numDims != numDimsInType) {
             symerrors << "13.2 [error] use of array member variable with definition " << dotParam2->semanticType << " with wrong number of dimensions " << id << indiceList << " in " << scope << std::endl;
             dotParam2->semanticType = "errortype";
+            accepted = false;
         }
     }
+
+    return accepted;
 }
 
 /* $begin symbol table creation visitors */
@@ -312,8 +323,9 @@ class SymbolTableCreationVisitor : public ASTNodeVisitor {
 public:
     int tempVarCounter = 0; // temp var name for ops is t0, t1, t2, ...
     std::ostream &symerrors;
+    bool accept;
 
-    explicit SymbolTableCreationVisitor(std::ostream &symerrors) : symerrors(symerrors) {}
+    explicit SymbolTableCreationVisitor(std::ostream &symerrors) : symerrors(symerrors), accept(true) {}
 
     std::string getTempVarName() {
         return "t" + std::to_string(tempVarCounter++);
@@ -342,6 +354,7 @@ public:
         auto *existingEntry = node.symbolTable->lookup(structName, "struct");
         if (existingEntry != nullptr) {
             symerrors << "8.1 [error] multiply defined struct " << structName << std::endl;
+            accept = false;
         }
 
         auto *structTable = new SymbolTable(structName, node.symbolTable, node.symbolTable->level + 1);
@@ -430,7 +443,7 @@ public:
             child->accept(*this);
         }
 
-        functionCheck(node, existingFuncEntry, funcType, funcName, symerrors);
+        functionCheck(node, existingFuncEntry, funcType, funcName, symerrors, accept);
     }
 
     void visit(FParamListNode &node) override {
@@ -462,6 +475,7 @@ public:
             } else {
                 symerrors << "8.4 [error] multiply defined parameter in a member function " << node.parent->symbolTable->name << "::" << node.symbolTable->name << "::" << paramName << std::endl;
             }
+            accept = false;
         }
 
         auto *paramEntry = new SymbolTableEntry(paramName, "param", paramType + dims, nullptr);
@@ -516,6 +530,7 @@ public:
             } else {
                 symerrors << "8.3 [error] multiply defined member variable " << node.symbolTable->name << "::" << varName << std::endl;
             }
+            accept = false;
         }
 
         auto *existingParamEntry = node.symbolTable->lookup(varName, "param");
@@ -527,6 +542,7 @@ public:
                 symerrors << "8.4 [error] multiply defined identifier in a member function "
                           << node.parent->parent->parent->symbolTable->name << "::" << node.symbolTable->name << "::" << varName << " is a param and a variable " << std::endl;
             }
+            accept = false;
         }
 
 
@@ -562,7 +578,7 @@ public:
             child->accept(*this);
         }
 
-        functionCheck(node, existingFuncEntry, funcType, funcName, symerrors);
+        functionCheck(node, existingFuncEntry, funcType, funcName, symerrors, accept);
     }
 
     void visit(VarDeclOrStatBlockNode &node) override {
@@ -778,8 +794,9 @@ public:
     std::ostream &symerrors;
     std::map<std::string, std::vector<std::string>> inheritanceGraph;
     std::map<std::string, std::vector<std::string>> dependencyGraph;
+    bool accept;
 
-    explicit ImplToStructAddingVisitor(std::ostream &symerrors) : symerrors(symerrors) {}
+    explicit ImplToStructAddingVisitor(std::ostream &symerrors) : symerrors(symerrors), accept(true) {}
 
     void visit(ImplDefNode &node) override {
         std::string implName = node.children[0]->value;
@@ -793,6 +810,7 @@ public:
 
         if (structEntry == nullptr) {
             symerrors << "6.3 [error] undeclared struct definition " << implName << std::endl;
+            accept = false;
             return;
         }
 
@@ -813,6 +831,7 @@ public:
             auto *funcEntry = structTable->lookup(child->children[0]->value, "func");
             if (funcEntry == nullptr) {
                 symerrors << "6.1 [error] definition provided for undeclared member function " << node.parent->children[0]->value << "::" << child->children[0]->value << std::endl;
+                accept = false;
             }
 
             child->accept(*this);
@@ -1069,8 +1088,9 @@ public:
 class SemanticCheckingVisitor : public ASTNodeVisitor {
 public:
     std::ostream &symerrors;
+    bool accept;
 
-    explicit SemanticCheckingVisitor(std::ostream &symerrors) : symerrors(symerrors) {}
+    explicit SemanticCheckingVisitor(std::ostream &symerrors) : symerrors(symerrors), accept(true) {}
 
     void visit(FuncDeclNode &node) override {
         auto *structTable = node.parent->symbolTable;
@@ -1081,6 +1101,7 @@ public:
         if (funcEntry == nullptr) {
             symerrors << "6.2 [error] undefined member function declaration "
                       << node.parent->parent->children[0]->value << "::" << node.children[0]->value << std::endl;
+            accept = false;
         } else {
             // check for override
             std::vector<std::string> inheritNames = structTable->lookupAllNamesOfKind("inherit");
@@ -1137,6 +1158,7 @@ public:
             auto *structEntry = globalTable->lookup(trimVariableType(node.children[1]->value), "struct");
             if (structEntry == nullptr) {
                 symerrors << "11.5 [error] undeclared struct " << node.children[1]->value << " in " << currentScope->name << std::endl;
+                accept = false;
                 return;
             }
         }
@@ -1148,6 +1170,7 @@ public:
             if (matchingVarEntry != nullptr) {
                 symerrors << "8.6 [warning] local variable " << structTable->name << "::" << currentScope->name << "::" << node.children[0]->value
                           << " shadows member variable " << structTable->name << "::" << node.children[0]->value << std::endl;
+                accept = false;
             }
 
             inheritanceVariableDeclCheck(node, structTable, globalTable, symerrors, true, currentScope->name);
@@ -1168,7 +1191,7 @@ public:
 
         if (node.parent->type == 12) return; // dot node, perform the check in the dot node visit method
 
-        variableCheck(node, symerrors);
+        variableCheck(node, symerrors, accept);
     }
 
     void visit(IndiceListNode &node) override {
@@ -1180,6 +1203,7 @@ public:
         for (auto child : node.children) {
             if (child->semanticType != "integer") {
                 symerrors << "13.2 [error] array index " << child->value << " is not an integer at " << node.symbolTable->name << "::" << node.parent->children[0]->value << std::endl;
+                accept = false;
             }
         }
     }
@@ -1204,6 +1228,7 @@ public:
             if (matchingFuncEntries.empty()) {
                 symerrors << "11.4 [error] undeclared/undefined free function " << node.children[0]->value << std::endl;
                 node.semanticType = "errortype";
+                accept = false;
                 return;
             }
 
@@ -1223,6 +1248,7 @@ public:
                     symerrors << "12.1 [error] free function call with wrong number of parameters in " << functionScope->name << ". Params: ( " << aparamList << ")"
                               << ", call of " << globalTable->name << "::" << funcEntry->name << std::endl;
                     node.semanticType = "errortype";
+                    accept = false;
                     return;
                 }
 
@@ -1246,6 +1272,7 @@ public:
                             symerrors << "13.3 [error] array parameter (in free function call) using wrong number of dimensions in " << functionScope->name << ". Expected: " << pair.second << ", got: " << pair.first
                                       << ", call of " << globalTable->name << "::" << funcEntry->name << std::endl;
                             node.semanticType = "errortype";
+                            accept = false;
                             return;
                         }
                     }
@@ -1253,6 +1280,7 @@ public:
                     symerrors << "12.2 [error] free function call with wrong type of parameters in " << functionScope->name << ". Params: ( " << aparamList << ")"
                               << ", call of " << globalTable->name << "::" << funcEntry->name << std::endl;
                     node.semanticType = "errortype";
+                    accept = false;
                     return;
                 }
 
@@ -1287,6 +1315,7 @@ public:
                         if (getNumDims(pair.first) != getNumDims(pair.second)) {
                             symerrors << "13.3 [error] array parameter (in free function call) using wrong number of dimensions in " << functionScope->name << ". Expected: " << pair.second << ", got: " << pair.first
                                       << ", call of " << globalTable->name << "::" << funcEntry->name << std::endl;
+                            accept = false;
                             return;
                         }
                     }
@@ -1294,6 +1323,7 @@ public:
                     symerrors << "12.2 [error] There are overloaded free functions with name " << node.children[0]->value <<
                               ", there exists a matching function with number of parameters but wrong types of parameters. "
                               "Params: ( " << aparamString << ") call of " << globalTable->name << "::" << node.children[0]->value << std::endl;
+                    accept = false;
                     return;
                 }
 
@@ -1310,6 +1340,7 @@ public:
             symerrors << "(12.1 OR 12.2) [error] There are overloaded free functions with name " << node.children[0]->value <<
                          ", there exists no matching function with the right number and types of parameters "
                          "Params: ( " << aparamString << ") call of " << globalTable->name << "::" << node.children[0]->value << std::endl;
+            accept = false;
         }
     }
 
@@ -1324,19 +1355,22 @@ public:
         if (dotParam1->semanticType == "errortype") {
             symerrors << "15.1 [error] . operator used on non-struct type " << dotParam1->value << std::endl;
             node.semanticType = "errortype";
+            accept = false;
             return;
         }
 
         if (dotParam1->type == 22 || dotParam1->type == 18) {
-            variableCheck(*dotParam1, symerrors);
+            variableCheck(*dotParam1, symerrors, accept);
         }
 
         if (dotParam1->semanticType == "errortype") {
             node.semanticType = "errortype";
+            accept = false;
             return;
         } else if (dotParam1->semanticType == "integer" || dotParam1->semanticType == "float") {
             symerrors << "15.1 [error] . operator used on non-struct " << dotParam1->value << " of type " << dotParam1->semanticType << std::endl;
             node.semanticType = "errortype";
+            accept = false;
             return;
         } else if (dotParam1->type != 12) {
             auto *functionScope = node.symbolTable;
@@ -1348,6 +1382,7 @@ public:
             if (structEntry == nullptr) {
                 symerrors << "15.1 [error] . operator used on non-struct " << dotParam1->value << " of type " << dotParam1->semanticType << std::endl;
                 node.semanticType = "errortype";
+                accept = false;
                 return;
             }
         }
@@ -1358,6 +1393,7 @@ public:
             memberVariableCheck(dotParam1, dotParam2, node.symbolTable, symerrors);
             if (dotParam2->semanticType == "errortype") {
                 node.semanticType = "errortype";
+                accept = false;
                 return;
             }
             node.semanticType = dotParam2->semanticType;
@@ -1390,6 +1426,7 @@ public:
                             symerrors << "12.1 [error] member function call with wrong number of parameters at " << functionScope->name << " " << structTable->name << "::" << funcEntry->name
                                         << ". Params: ( " << aparamList << ")" << std::endl;
                             node.semanticType = "errortype";
+                            accept = false;
                             return;
                         }
 
@@ -1412,6 +1449,7 @@ public:
                                     symerrors << "13.3 [error] array parameter (in member function call) using wrong number of dimensions at " << functionScope->name << " " << structTable->name << "::" << funcEntry->name
                                               << ". Expected: " << pair.second << ", got: " << pair.first << std::endl;
                                     node.semanticType = "errortype";
+                                    accept = false;
                                     return;
                                 }
                             }
@@ -1419,6 +1457,7 @@ public:
                             symerrors << "12.2 [error] member function call with wrong type of parameters at " << functionScope->name << " " << structTable->name << "::" << funcEntry->name
                                          << ". Params: ( " << aparamList << ")" << std::endl;
                             node.semanticType = "errortype";
+                            accept = false;
                             return;
                         }
 
@@ -1454,6 +1493,7 @@ public:
                                   << ". Params: ( " << aparamList << ")" << std::endl;
                     }
                     node.semanticType = "errortype";
+                    accept = false;
                     return;
                 }
 
@@ -1474,6 +1514,7 @@ public:
                             symerrors << "12.1 [error] inherited member function call with wrong number of parameters at " << structTable->name << "." << inheritedStructTable->name << "::" << dotParam2->children[0]->value
                                         << ". Params: ( " << aparamList << ")" << std::endl;
                             node.semanticType = "errortype";
+                            accept = false;
                             return;
                         }
 
@@ -1488,6 +1529,7 @@ public:
                             symerrors << "12.2 [error] inherited member function call with wrong type of parameters at " << structTable->name << "." << inheritedStructTable->name << "::" <<  dotParam2->children[0]->value
                                     << ". Params: ( " << aparamList << ")" << std::endl;
                             node.semanticType = "errortype";
+                            accept = false;
                             return;
                         }
 
@@ -1519,13 +1561,14 @@ public:
 
                     symerrors << "12.2 [error] member function call with wrong type of parameters at " << structTable->name << "::" << dotParam2->children[0]->value
                               << ". Params: ( " << aparamList << ")" << std::endl;
-
                 }
 
                 node.semanticType = "errortype";
+                accept = false;
         } else {
             symerrors << "15.1 [error] . operator right hand side is not a member function call or member variable access at " << dotParam1->value << "." << dotParam2->value << std::endl;
             node.semanticType = "errortype";
+            accept = false;
         }
 
     }
@@ -1548,11 +1591,12 @@ public:
         if (left->semanticType == "errortype" || right->semanticType == "errortype") {
             node.semanticType = "errortype";
             symerrors << "10.2 [error] assignment of " << left->semanticType << " to " << right->semanticType << " in " << node.symbolTable->name << std::endl;
+            accept = false;
             return;
         }
 
         if (left->type == 22) {
-            variableCheck(*left, symerrors);
+            variableCheck(*left, symerrors, accept);
         }
 
         std::string leftSemanticTypeTrimmed = trimVariableType(left->semanticType);
@@ -1560,7 +1604,7 @@ public:
 
         if (leftSemanticTypeTrimmed != rightSemanticTypeTrimmed) {
             symerrors << "10.2 [error] assignment of " << left->semanticType << " to " << right->semanticType << " in " << node.symbolTable->name << std::endl;
-
+            accept = false;
             node.semanticType = "errortype";
         }
     }
@@ -1574,6 +1618,7 @@ public:
 
         if (node.children[0]->semanticType != type) {
             symerrors << "10.3 [error] return type mismatch " << node.children[0]->semanticType << " and " << type << std::endl;
+            accept = false;
         }
     }
 
@@ -1594,10 +1639,12 @@ public:
         if (left->semanticType == "errortype" || right->semanticType == "errortype") {
             symerrors << "10.1 [error] type mismatch in addition/subtraction operation " << left->semanticType << " and " << right->semanticType << std::endl;
             node.semanticType = "errortype";
+            accept = false;
             return;
         } else if (left->semanticType != right->semanticType) {
             symerrors << "10.1 [error] type mismatch in addition/subtraction operation " << left->semanticType << " and " << right->semanticType << std::endl;
             node.semanticType = "errortype";
+            accept = false;
         } else {
             node.semanticType = left->semanticType;
         }
@@ -1613,10 +1660,12 @@ public:
         if (left->semanticType == "errortype" || right->semanticType == "errortype") {
             symerrors << "10.1 [error] type mismatch in multiplication/division operation " << left->semanticType << " and " << right->semanticType << std::endl;
             node.semanticType = "errortype";
+            accept = false;
             return;
         } else if (left->semanticType != right->semanticType) {
             symerrors << "10.1 [error] type mismatch in multiplication/division operation " << left->semanticType << " and " << right->semanticType << std::endl;
             node.semanticType = "errortype";
+            accept = false;
         } else {
             node.semanticType = left->semanticType;
         }
@@ -1633,10 +1682,12 @@ public:
         if (left->semanticType == "errortype" || right->semanticType == "errortype") {
             symerrors << "10.1 [error] type mismatch in relational operation " << left->semanticType << " and " << right->semanticType << std::endl;
             node.semanticType = "errortype";
+            accept = false;
             return;
         } else if (left->semanticType != right->semanticType) {
             symerrors << "10.1 [error] type mismatch in relational operation " << left->semanticType << " and " << right->semanticType << std::endl;
             node.semanticType = "errortype";
+            accept = false;
         } else {
             node.semanticType = "integer";
         }
