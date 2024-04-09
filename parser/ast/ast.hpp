@@ -533,10 +533,12 @@ public:
 
     std::string visibility;
 
+    int size;
     int offset;
     std::vector<int> dims;
 
     SymbolTableEntry(std::string name, std::string kind, std::string type, SymbolTable *link) : name(std::move(name)), kind(std::move(kind)), type(std::move(type)), link(link) {
+        size = 0;
         offset = 0;
         dims = std::vector<int>();
     }
@@ -568,11 +570,13 @@ public:
     std::vector<SymbolTableEntry*> symList;
     SymbolTable* upperScope;
     int size;
+    int offset;
     int level;
 
     SymbolTable(std::string name, SymbolTable* upperScope, int level) : name(std::move(name)), upperScope(upperScope), level(level) {
         symList = std::vector<SymbolTableEntry*>();
         size = 0;
+        offset = 0;
     }
 
     ~SymbolTable() {

@@ -23,6 +23,7 @@ include_directories(
         parser/parser
         parser/ast
         semantic/semantic
+        codegen/codegen
 )
 
 add_executable(compiler
@@ -36,6 +37,8 @@ add_executable(compiler
         semantic/semantic/semantic.cpp
         semantic/semantic/semantic.hpp
         parser/ast/ast.hpp
+        codegen/codegen/codegen.cpp
+        codegen/codegen/codegen.hpp
 )
 
 find_package(PkgConfig REQUIRED)

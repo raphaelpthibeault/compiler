@@ -89,4 +89,14 @@ bool semanticAnalysis(ASTNode &root, std::ostream &symfile, std::ostream &symerr
     return visitor.accept && visitor2.accept && semanticChecker.accept && !hasCyclicInher && !hasCyclicDep;
 }
 
-
+/*
+ * Removes the array size from a type or semantic type
+ */
+std::string trimVariableType(const std::string& type) {
+    std::string trimmedType;
+    for (char c : type) {
+        if (c == '[') break;
+        trimmedType += c;
+    }
+    return trimmedType;
+}

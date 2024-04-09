@@ -12,6 +12,7 @@ enum NodeState {NOT_VISITED, VISITING, VISITED};
 
 bool semanticAnalysis(ASTNode &root, std::ostream &symfile, std::ostream &symerrors);
 bool detectCyclicStructDependency(const std::map<std::string, std::vector<std::string>> &graph, std::ostream &symerrors, bool isDependencyGraph);
+std::string trimVariableType(const std::string& type);
 
 /*
  * function to check for cycles
@@ -52,18 +53,6 @@ static bool hasCycle(const std::string &nodeName, const std::map<std::string, st
     currPath.pop_back();
 
     return isCycle;
-}
-
-/*
- * Removes the array size from a type or semantic type
- */
-static inline std::string trimVariableType(const std::string& type) {
-    std::string trimmedType;
-    for (char c : type) {
-        if (c == '[') break;
-        trimmedType += c;
-    }
-    return trimmedType;
 }
 
 /*
@@ -321,15 +310,10 @@ static bool memberVariableCheck(ASTNode *dotParam1, ASTNode *dotParam2, SymbolTa
  * */
 class SymbolTableCreationVisitor : public ASTNodeVisitor {
 public:
-    int tempVarCounter = 0; // temp var name for ops is t0, t1, t2, ...
     std::ostream &symerrors;
     bool accept;
 
     explicit SymbolTableCreationVisitor(std::ostream &symerrors) : symerrors(symerrors), accept(true) {}
-
-    std::string getTempVarName() {
-        return "t" + std::to_string(tempVarCounter++);
-    }
 
     void visit(ProgNode& node) override {
         node.symbolTable = new SymbolTable("global", nullptr, 0);
@@ -479,6 +463,7 @@ public:
         }
 
         auto *paramEntry = new SymbolTableEntry(paramName, "param", paramType + dims, nullptr);
+        node.symbolTableEntry = paramEntry;
         node.symbolTable->insert(paramEntry);
 
         for (auto child : node.children) {
@@ -1461,6 +1446,7 @@ public:
                             return;
                         }
 
+                        dotParam2->semanticType = funcEntry->type;
                         node.semanticType = funcEntry->type;
                         return;
                     }
@@ -1478,6 +1464,7 @@ public:
                         }
 
                         // found a match
+                        dotParam2->semanticType = funcEntry->type;
                         node.semanticType = funcEntry->type;
                         return;
                     }
@@ -1533,6 +1520,7 @@ public:
                             return;
                         }
 
+                        dotParam2->semanticType = funcEntry->type;
                         node.semanticType = funcEntry->type;
                         return;
                     }
@@ -1550,6 +1538,7 @@ public:
                         }
 
                         // found a match
+                        dotParam2->semanticType = funcEntry->type;
                         node.semanticType = funcEntry->type;
                         return;
                     }
