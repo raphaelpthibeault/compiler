@@ -587,14 +587,12 @@ public:
 
     void insert(SymbolTableEntry* entry) {
         symList.push_back(entry);
-        size++;
     }
 
     void remove(SymbolTableEntry* entry) {
         for (int i = 0; i < symList.size(); i++) {
             if (symList[i] == entry) {
                 symList.erase(symList.begin() + i);
-                size--;
                 break;
             }
         }

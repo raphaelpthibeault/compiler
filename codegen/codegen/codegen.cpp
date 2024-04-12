@@ -1,9 +1,23 @@
 #include <codegen.hpp>
 
+/*
+ * compute sizes and offsets and place them in the symbol tables and entries
+ * */
 void computeSizes(ASTNode &root) {
     ComputeMemSizeVisitor memSizeVisitor = ComputeMemSizeVisitor();
     root.accept(memSizeVisitor);
 }
+
+
+void generateCode(ASTNode &root, std::ostream &out) {
+    std::ostringstream moonExecCode;
+    std::ostringstream moonDataCode;
+    CodeGenerationVisitor codeGenVisitor = CodeGenerationVisitor(moonExecCode, moonDataCode);
+    root.accept(codeGenVisitor);
+
+    out << moonExecCode.str() << moonDataCode.str() << std::endl;
+}
+
 
 /*
  * sizeof table
@@ -35,7 +49,7 @@ int sizeofTable(SymbolTable *table, bool isStruct) {
             }
         }
 
-        table->size = structSize;
+        //table->size = structSize;
         return structSize;
     } else  {
         // params, vars and tempvars ; i.e. all entries
@@ -105,7 +119,7 @@ int sizeofEntry(SymbolTableEntry *entry, SymbolTable *currentScope) {
  * */
 int sizeofType(std::string &type, SymbolTable *currentScope) {
     if (type == "void") {
-        return 0;
+        return 4; // idk
     } else if (type == "integer") {
         return INT_SIZE;
     } else if (type == "float") {

@@ -41,6 +41,14 @@ static bool hasCycle(const std::string &nodeName, const std::map<std::string, st
     currPath.push_back(nodeName);
 
     bool isCycle = false;
+
+    if (graph.find(nodeName) == graph.end()) {
+        state[nodeName] = VISITED;
+        visited.insert(nodeName);
+        currPath.pop_back();
+        return false;
+    }
+
     for (const auto &child : graph.at(nodeName)) {
         if (hasCycle(child, graph, state, currPath, visited, symerrors, isDependencyGraph)) {
             isCycle = true;
@@ -105,13 +113,19 @@ static void variableCheck(ASTNode &node, std::ostream &symerrors, bool &accept) 
     }
 
     node.semanticType = varEntry->type;
+    if (node.symbolTableEntry == nullptr) {
+        node.symbolTableEntry = varEntry;
+    }
 
     if (node.semanticType == "errortype") {
         accept = false;
         return;
     }
 
-    if (node.type == 22) return;
+    if (node.type == 22) {
+        node.symbolTableEntry = varEntry;
+        return;
+    }
 
     std::string indiceList;
     for (auto indice : node.children[1]->children) {
@@ -355,6 +369,8 @@ public:
 
     void visit(IdNode& node) override {
         for (auto child : node.children) {
+            child->parent = &node;
+            child->symbolTable = node.symbolTable;
             child->accept(*this);
         }
     }
@@ -400,6 +416,8 @@ public:
 
     void visit(VisibilityNode &node) override {
         for (auto child : node.children) {
+            child->parent = &node;
+            child->symbolTable = node.symbolTable;
             child->accept(*this);
         }
     }
@@ -467,24 +485,32 @@ public:
         node.symbolTable->insert(paramEntry);
 
         for (auto child : node.children) {
+            child->parent = &node;
+            child->symbolTable = node.symbolTable;
             child->accept(*this);
         }
     }
 
     void visit(TypeNode &node) override {
         for (auto child : node.children) {
+            child->parent = &node;
+            child->symbolTable = node.symbolTable;
             child->accept(*this);
         }
     }
 
     void visit(ArraySizeListNode &node) override {
         for (auto child : node.children) {
+            child->parent = &node;
+            child->symbolTable = node.symbolTable;
             child->accept(*this);
         }
     }
 
     void visit(IntlitNode &node) override {
         for (auto child : node.children) {
+            child->parent = &node;
+            child->symbolTable = node.symbolTable;
             child->accept(*this);
         }
     }
@@ -535,6 +561,8 @@ public:
         node.symbolTable->insert(node.symbolTableEntry);
 
         for (auto child : node.children) {
+            child->parent = &node;
+            child->symbolTable = node.symbolTable;
             child->accept(*this);
         }
     }
@@ -641,6 +669,8 @@ public:
 
     void visit(FloatlitNode &node) override {
         for (auto child : node.children) {
+            child->parent = &node;
+            child->symbolTable = node.symbolTable;
             child->accept(*this);
         }
     }
@@ -737,6 +767,8 @@ public:
 
     void visit(EpsilonNode &node) override {
         for (auto child : node.children) {
+            child->parent = &node;
+            child->symbolTable = node.symbolTable;
             child->accept(*this);
         }
     }
