@@ -74,7 +74,6 @@ public:
 
         // unnecessary if, but for clarity
         if (node.symbolTableEntry->name == "main") {
-            //node.symbolTable->size += INT_SIZE;
             for (auto entry : node.symbolTable->symList) {
                 entry->offset = node.symbolTable->size - entry->size;
                 node.symbolTable->size -= entry->size;
@@ -84,6 +83,9 @@ public:
             node.symbolTable->size = - sizeofType(node.symbolTableEntry->type, node.symbolTable);
             // return address
             node.symbolTable->size -= INT_SIZE;
+            // old frame pointer
+            node.symbolTable->size -= INT_SIZE;
+
 
             for (auto entry : node.symbolTable->symList) {
                 entry->offset = node.symbolTable->size - entry->size;
@@ -417,22 +419,37 @@ public:
             data("cr") << "db 13,10,0\n";
         } else {
             bool isFree = node.symbolTable->upperScope->upperScope == nullptr;
-            int returnSize = sizeofType(node.symbolTableEntry->type, node.symbolTable);
             if (isFree) {
+                exec() << "align\n";
                 exec(node.symbolTableEntry->name) << "% funcdef " << node.symbolTableEntry->name << "\n";
-                sw(-returnSize-4, SP, JL);
 
-                exec() << "% function body begins\n";
+                /* function prolog */
+                exec("% function prolog\n");
+                exec("% save old frame pointer\n");
+                sw(16, SP, FP);
+
+                exec("% change frame pointer\n");
+                addi(FP, SP, 24); // hard-coded TODO
+
+
+
                 for (auto child : node.children) {
                     child->accept(*this);
                 }
-                exec() << "% function body ends\n";
 
-                lw(JL, returnSize-4, SP);
+
+
+                /* function epilog */
+                exec("% function epilog");
+                exec("% restore old stack pointer");
+                addi(SP, SP, node.symbolTable->size);
+                exec("% restore old frame pointer");
+                lw(FP, 16, SP);
+
                 jr(JL);
-            } else {
-                // TODO
+                exec("% end of funcdef " + node.symbolTableEntry->name) << "\n";
             }
+
         }
     }
 
@@ -493,7 +510,6 @@ public:
         for (auto child : node.children) {
             child->accept(*this);
         }
-
 
         /* options:
          * x[a] = y[b]
@@ -736,9 +752,6 @@ public:
                 add(localRegister3, FP, localRegister3); // actual address
 
                 lw(localRegister1, 0, localRegister3);
-
-
-
 
                 exec() << "% put value on stack \n";
                 addi(SP, SP, node.symbolTable->size);
@@ -1102,85 +1115,86 @@ public:
             child->accept(*this);
         }
 
-        /*
-         * pass parameters
-         * increment stack frame
-         * jump to f
-         * decrement stack frame
-         * */
-        //exec() << "% function call " << node.symbolTableEntry->name << "\n";
+        SymbolTableEntry *funcEntry;
 
-        std::string localRegister1 = getRegister();
-        std::string localRegister2 = getRegister();
-
-        //std::cout << "Function call: " << node.symbolTableEntry->name << std::endl;
-
-        std::string id = node.children[0]->value;
-        std::vector<ASTNode *> aparams = node.children[1]->children;
-
-
-        // for each param, get temp value
-        exec() << "% pass parameters\n";
-
-        for (int i = 0; i < aparams.size(); ++i) {
-            //std::cout << "Param: " << aparams[i]->symbolTableEntry->name << " offset: " << aparams[i]->symbolTableEntry->offset << std::endl;
-            auto *param = aparams[i];
-            lw(localRegister1, param->symbolTableEntry->offset, FP);
-
-            if (param->type == ASTNodeType::Dot) {
-                // TODO
-            } else if (isArrayType(param->semanticType) && isBaseType(trimVariableType(param->semanticType))) {
-                if (trimVariableType(param->semanticType) == "integer") {
-                    for (int j = 0; j < param->symbolTableEntry->size; j += 4) {
-                        lw(localRegister2, j, localRegister1);
-                        sw(node.symbolTable->size + param->symbolTableEntry->offset + j, SP, localRegister2);
-                    }
-                } else if (trimVariableType(param->semanticType) == "float") {
-                    // TODO
-                }
-            } else if (isArrayType(param->semanticType)) {
-                // TODO
-            } else if (!isBaseType(param->semanticType)) {
-                // TODO
-            } else {
-                sw(node.symbolTable->size + param->symbolTableEntry->offset, SP, localRegister1);
-            }
-        }
-
-
-
-        /*
-         * TODO member functions
-         * */
-
-        // find function
         auto *globalScope = node.symbolTable->upperScope;
         while (globalScope->upperScope != nullptr) {
             globalScope = globalScope->upperScope;
         }
+        funcEntry = globalScope->lookup(node.children[0]->value, "func");
 
-        auto *funcTable = globalScope->lookup(id, "func")->link;
+        /* reserve return value space */
+        exec("% reserve return value space\n");
+        subi(SP, SP, sizeofType(funcEntry->type, funcEntry->link));
+
+        /* reserve old frame pointer space */
+        exec("% reserve old frame pointer space\n");
+        subi(SP, SP, INT_SIZE);
+
+        /* reserve return address space */
+        exec("% reserve return address space\n");
+        subi(SP, SP, INT_SIZE);
+        exec("% store return address\n");
+        sw(0, SP, JL); // store return address
+
+        /* push params */
+        exec("% push params\n");
+        std::vector<ASTNode *> aparams = node.children[1]->children;
+
+        for (auto & aparam : aparams) {
+            auto *aparamEntry = aparam->symbolTableEntry;
+            exec("% push param " + aparamEntry->name + "\n");
+            std::string localRegister2 = getRegister();
+            subi(SP, SP, aparamEntry->size); // reserve space
+            lw(localRegister2, aparamEntry->offset, FP);
+            sw(0, SP, localRegister2);
+            freeRegister(localRegister2);
+        }
+        exec("% params done\n");
 
 
-        lw(localRegister1, node.symbolTableEntry->offset, FP); // return address
 
-        addi(SP, SP, node.symbolTable->size);
-        addi(FP, FP, funcTable->size);
+        /* jump to function */
+        exec("% jump to function\n");
+        jl(JL, funcEntry->name);
+
 
         /*
-         * TODO overloads
+         * get return value
          * */
-        jl(JL, id);
+        /* pop params */
+        exec("% pop params\n");
+        for (auto & aparam : aparams) {
+            auto *aparamEntry = aparam->symbolTableEntry;
+            exec("% pop param " + aparamEntry->name + "\n");
+            std::string localRegister2 = getRegister();
+            lw(localRegister2, 0, SP);
+            sw(aparamEntry->offset, FP, localRegister2);
+            addi(SP, SP, aparamEntry->size); // free space
+            freeRegister(localRegister2);
+        }
 
-        subi(SP, SP, node.symbolTable->size);
-        subi(FP, FP, funcTable->size);
+        /* free return address space */
+        exec("% free return address space\n");
+        addi(SP, SP, INT_SIZE);
 
-        // copy return value which is in RV to temp
+        /* free old frame pointer space */
+        exec("% free old frame pointer space\n");
+        addi(SP, SP, INT_SIZE);
 
 
-
-        freeRegister(localRegister2);
+        /* get return value */
+        exec("% get return value\n");
+        std::string localRegister1 = getRegister();
+        lw(localRegister1, 0, SP);
+        sw(node.symbolTableEntry->offset, FP, localRegister1);
         freeRegister(localRegister1);
+
+        /* free return value space */
+        exec("% free return value space\n");
+        addi(SP, SP, sizeofType(funcEntry->type, funcEntry->link));
+
+
 
     }
 
@@ -1188,24 +1202,13 @@ public:
         for (auto child : node.children) {
             child->accept(*this);
         }
+        exec("% return statement\n");
 
-        auto *returnNode = node.children[0];
-
-        exec() << "% return  " << returnNode->symbolTableEntry->name << "\n";
         std::string localRegister1 = getRegister();
-        std::string localRegister2 = getRegister();
-
-        lw(localRegister1, node.children[0]->symbolTableEntry->offset, FP);
-
-        if (isArrayType(returnNode->semanticType)) {
-            // TODO
-        } else if (returnNode->type == ASTNodeType::Dot) {
-            // TODO
-        } else {
-            sw(returnNode->symbolTableEntry->offset, FP, localRegister1);
-        }
-
-        freeRegister(localRegister2);
+        exec("% load return value\n");
+        lw(localRegister1, node.children[0]->symbolTableEntry->offset, FP); // correct return value
+        exec("% store return value at offset 0\n");
+        sw(0, FP, localRegister1);
         freeRegister(localRegister1);
     }
 
@@ -1549,18 +1552,11 @@ private:
         exec() << + "putc " + dest + "\n";
     }
 
-
     /* $END I/O INSTRUCTIONS */
 
-
-    void push(const std::string &reg) {
-        subi(FP, FP, 4);
-        sw(0, FP, reg);
-    }
-
-    void pop(const std::string &reg) {
-        lw(reg, 0, FP);
-        addi(FP, FP, 4);
+    void push(const std::string &reg, int offset) {
+        addi(SP, SP, offset);
+        sw(0, SP, reg);
     }
 
 

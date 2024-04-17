@@ -21,6 +21,67 @@ static uint8_t lexerIsDigit_(char c);
 
 static TokenType getTokenType_(const char *id);
 
+const char* tokenTypeToString(TokenType type) {
+    switch (type) {
+        case TokenTypeId: return "ID";
+        case TokenTypeInt: return "INT";
+        case TokenTypeFloat: return "FLOAT";
+        case TokenTypeEquals: return "EQUALS";
+        case TokenTypeNotEquals: return "NOT_EQUALS";
+        case TokenTypeLessThan: return "LESS_THAN";
+        case TokenTypeGreaterThan: return "GREATER_THAN";
+        case TokenTypeLessThanOrEquals: return "LESS_THAN_OR_EQUALS";
+        case TokenTypeGreaterThanOrEquals: return "GREATER_THAN_OR_EQUALS";
+        case TokenTypePlus: return "PLUS";
+        case TokenTypeMinus: return "MINUS";
+        case TokenTypeMultiply: return "MULTIPLY";
+        case TokenTypeDivide: return "DIVIDE";
+        case TokenTypeAssign: return "ASSIGN";
+        case TokenTypeOr: return "OR";
+        case TokenTypeAnd: return "AND";
+        case TokenTypeNot: return "NOT";
+        case TokenTypeLeftParenthesis: return "LEFT_PARENTHESIS";
+        case TokenTypeRightParenthesis: return "RIGHT_PARENTHESIS";
+        case TokenTypeLeftBrace: return "LEFT_BRACE";
+        case TokenTypeRightBrace: return "RIGHT_BRACE";
+        case TokenTypeLeftBracket: return "LEFT_BRACKET";
+        case TokenTypeRightBracket: return "RIGHT_BRACKET";
+        case TokenTypeSemicolon: return "SEMICOLON";
+        case TokenTypeComma: return "COMMA";
+        case TokenTypePeriod: return "PERIOD";
+        case TokenTypeColon: return "COLON";
+        case TokenTypeArrow: return "ARROW";
+        case TokenTypeIf: return "IF";
+        case TokenTypeThen: return "THEN";
+        case TokenTypeElse: return "ELSE";
+        case TokenTypeVoid: return "VOID";
+        case TokenTypePublic: return "PUBLIC";
+        case TokenTypePrivate: return "PRIVATE";
+        case TokenTypeFunc: return "FUNC";
+        case TokenTypeVar: return "VAR";
+        case TokenTypeStruct: return "STRUCT";
+        case TokenTypeWhile: return "WHILE";
+        case TokenTypeRead: return "READ";
+        case TokenTypeWrite: return "WRITE";
+        case TokenTypeReturn: return "RETURN";
+        case TokenTypeSelf: return "SELF";
+        case TokenTypeInherits: return "INHERITS";
+        case TokenTypeLet: return "LET";
+        case TokenTypeImplements: return "IMPLEMENTS";
+        case TokenTypeIllegal: return "ILLEGAL";
+        case TokenTypeInvalidId: return "INVALID_ID";
+        case TokenTypeInvalidInt: return "INVALID_INT";
+        case TokenTypeInvalidFloat: return "INVALID_FLOAT";
+        case TokenTypeInvalidChar: return "INVALID_CHAR";
+        case TokenTypeInlineComment: return "INLINE_COMMENT";
+        case TokenTypeBlockComment: return "BLOCK_COMMENT";
+        case TokenTypeDollarSign: return "DOLLAR_SIGN";
+        case TokenTypeIntType: return "INT_TYPE";
+        case TokenTypeFloatType: return "FLOAT_TYPE";
+        case TokenTypeEOF: return "EOF";
+        default: return "UNKNOWN";
+    }
+}
 
 /**********************************************************************************************************************
                                            PUBLIC FUNCTIONS
@@ -63,6 +124,28 @@ Token* lexerGetAllTokens(Lexer lexer, size_t *length) {
 
     *length = i;
     return tokens;
+}
+
+void writeAllTokensToFile(const char *outlextokens, const char *outlexerrors, const char *input) {
+    FILE *outfile = fopen(outlextokens, "w");
+    FILE *errorfile = fopen(outlexerrors, "w");
+
+    if (outfile == NULL || errorfile == NULL) {
+        fprintf(stderr, "Error opening file for writing\n");
+        return;
+    }
+
+    Lexer lexer = lexerNew(input);
+    Token token = NULL;
+
+    while ((token = lexerNextToken(lexer)) != NULL) {
+        if (token->type == TokenTypeInvalidChar || token->type == TokenTypeInvalidId || token->type == TokenTypeInvalidInt || token->type == TokenTypeInvalidFloat || token->type == TokenTypeIllegal) {
+            fprintf(errorfile, "Error at line %zu: %s\n", token->line, token->value);
+        } else {
+            fprintf(outfile, "%s %zu %s\n", tokenTypeToString(token->type), token->line, token->value);
+        }
+        tokenFree(&token);
+    }
 }
 
 void tokensFreeAll(Token **tokens, size_t *length) {

@@ -97,6 +97,9 @@ extern "C" {
 
     Token getNextToken(Lexer lexer);
 
+    void writeAllTokensToFile(const char *outlextokens, const char *outlexerrors, const char *input);
+
+
 #ifdef __cplusplus
 };
 #endif // __cplusplus
