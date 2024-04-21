@@ -424,6 +424,9 @@ public:
                 exec(node.symbolTableEntry->name) << "% funcdef " << node.symbolTableEntry->name << "\n";
 
                 /* function prolog */
+                // put JL on stack frame
+
+
                 exec("% function prolog\n");
                 exec("% save old frame pointer\n");
                 sw(16, SP, FP);
@@ -445,6 +448,11 @@ public:
                 addi(SP, SP, node.symbolTable->size);
                 exec("% restore old frame pointer");
                 lw(FP, 16, SP);
+
+
+                // get r15 from stack frame
+
+
 
                 jr(JL);
                 exec("% end of funcdef " + node.symbolTableEntry->name) << "\n";
