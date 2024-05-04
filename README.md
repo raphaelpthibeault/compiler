@@ -5,6 +5,8 @@ The chosen intermediate representation for the syntax analysis phase was an abst
 The semantic analysis phase was split into two stages: generating symbol tables for the AST vertices and performing the semantic checkings.
 The code generation phase outputs the mooncode for the Moon Virtual Machine.
 
+The visitor design pattern was used to traverse the AST and perform the syntax analysis and the code generation.
+
 An example program for bubblesort:
 ```c
 /* sort the array */
