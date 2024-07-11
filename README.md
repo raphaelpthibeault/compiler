@@ -1,4 +1,4 @@
-This project is a compiler for a custom language defined in a compiler class. The language supports multiple inheritance and has custom C-style syntax.
+This project is a compiler for a custom language defined in a compiler class. The language supports multiple inheritance and has custom Rust-style syntax.
 
 The compiler uses a table-driven recursive descent parser.
 The chosen intermediate representation for the syntax analysis phase was an abstract syntax tree (AST).
